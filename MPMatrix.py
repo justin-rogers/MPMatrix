@@ -25,9 +25,10 @@ class MPMatrix:
     def __add__(self, B):
         """B is another MPMatrix, returns A+B using global ctx"""
         n, m = self.shape
-        assert (n, m) == B.shape, ("Cannot add "
-                                   "shapes ({}, {}) and ({}, {})".format(
-                                       n, m, k, r))
+        k, r = B.shape
+        assert (n == k
+                and m == r), ("Cannot add shapes ({}, {}) and ({}, {})".format(
+                    n, m, k, r))
         sum_ = dict()
         for i in range(n):
             for j in range(m):
@@ -54,7 +55,7 @@ class MPMatrix:
         """Syntactic sugar for data read via tuple keys"""
         return self.data[key]
 
-    def getrow(self, k):
+    def get_row(self, k):
         """Returns an MPMatrix given by row k"""
         data = dict()
         n, m = self.shape
@@ -62,7 +63,7 @@ class MPMatrix:
             data[(0, j)] = self.data[(k, j)]
         return MPMatrix((1, m), data)
 
-    def droprow(self, k):
+    def drop_row(self, k):
         """Returns an MPMatrix given by dropping row k and reindexing"""
         data = self.data.copy()
         n, m = self.shape
