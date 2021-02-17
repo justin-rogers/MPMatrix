@@ -164,8 +164,82 @@ class MPMatrix:
                 data[(i, j)] = mpfr(0)
         return MPMatrix((m, n), data)
 
-    def QR(A):
-        """Perform QR factorization"""
+    def _house(self):
+        """Householder reflection, defined for column vector shapes x=(m,1).
+        Returns (v, beta), where v is a column vector v with v[0]=1,
+        and the matrix P = I - beta * v * v.T gives the Householder
+        transformation satisfying: Px = norm(x)*e_1.
+        
+        Context: recall that a Householder transformation is given by an
+        m-by-m matrix of the form: P = I - beta * v * v.T
+        It reflects over v, the Householder vector.
+        
+        The matrix is never explicitly formed.
+        Further info: algorithm 5.1.1, pg 236, Matrix Computations (4th ed).
+        
+        To efficiently apply the transformation to a matrix:
+
+        PA = A - (beta * v) (v.T * A)
+        AP = A - (A*v) (B*v).T
+        """
+        m, n = self.shape
+        assert n == 1, "need shape (m,1); have ({}, {})".format(m, n)
+        alpha = self.data(0, 0)
+        y = self.drop_row(0)
+        sigma = y.frob_prod(y)  #norm squared
+
+        if sigma == 0 and alpha >= 0:
+            return self, 0
+        elif sigma == 0 and alpha < 0:
+            return self, -2
+        else:
+            v = self.copy()
+            mu = gmpy2.sqrt(alpha**2 + sigma)  # always positive
+            if alpha <= 0:
+                new_v0 = alpha - mu
+            else:
+                new_v0 = -sigma / (alpha + mu)
+            beta = 2 * new_v0**2 / (sigma + new_v0**2)
+            v[(0, 0)] = new_v0
+            v = v.scale(1 / new_v0)
+            return v, beta
+
+    def _house_minor_update(self, k):
+        """Utility function used for algorithm 5.2.1, pg 273,
+        Matrix Computation 4th ed.
+        
+        Mutates self by clearing the kth column.
+        """
+        m, n = self.shape
+
+        # Copy the column vector in order to call _house(column).
+        data = dict()
+        length = m - k
+        for i in range(length):
+            # Equivalent to self.data[k:, k] in numpy notation
+            data[(i, 0)] = self.data[(k + i, k)]
+        reflect_me = MPMatrix((length, 1), data)
+        v, beta = _house(reflect_me)
+
+        # Now need to update the submatrix B = self.data[k:, k:]
+        # via the transformation  B = (I - beta * v * v.T) * B
+        scalar = 1 - beta * v.frob_prod(v)
+        for i in range(k, m):
+            for j in range(k, n):
+                self.data[(i, j)] *= scalar
+                # Could we optimize this by storing scalars for n minors?
+        return
+
+    def QR(self):
+        """Perform QR factorization with householder reflections.
+        O(n^3), stable."""
+        m, n = self.shape
+        for j in range(n):
+            _house_minor_update(self)
+            if j < m:
+                #TODO: A(j+1:m, j) = v(2:m-j+1)
+                pass
+        return
 
 
 def matrix_test1():
