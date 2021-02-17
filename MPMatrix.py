@@ -1,5 +1,6 @@
 import numpy as np
 import gmpy2
+import itertools
 from gmpy2 import mpfr  # float class
 
 #   Attributes:
@@ -52,13 +53,45 @@ class MPMatrix:
         return MPMatrix((n, r), mul_)
 
     def __getitem__(self, key):
-        """Syntactic sugar for data read via tuple keys"""
+        """Syntactic sugar for data read via tuple keys
+        
+        To access one value, you may use these notations:
+        
+        0. A[(i,j)] returns the (i,j) entry.
+
+        TODO: 1. A[i, j] returns the (i,j) entry.
+
+        TODO: 2. If A.shape is (m, 1) or (1, n): you may use integer indexing A[i].
+        
+        TODO: implement views, return them for A[i:, j:] notations.
+
+        TODO: match these implementations to __setitem__
+        """
+
+        # Simple indexing A[x]
         return self.data[key]
 
     def __setitem__(self, key, val):
         """Syntactic sugar for dict write via tuple keys"""
-        assert isinstance(val, type(mpfr(0)))  # test
+        assert isinstance(val, type(mpfr(0)))
         self.data[key] = val
+
+    def __repr__(self):
+        """Printable representation: print each entry,
+        using left-justification with space filler.
+        
+        Will not look pretty if the array is too wide.
+        """
+        m, n = self.shape
+        all_strings = [[self[i, j].__str__() for j in range(n)]
+                       for i in range(m)]
+        max_len = max(
+            [max([len(s) for s in all_strings[i]]) for i in range(m)])
+        lines = [
+            ''.join([s.ljust(max_len + 1) for s in all_strings[i]])
+            for i in range(m)
+        ]
+        return '\n'.join(lines)
 
     def get_rows(self, k, row_count):
         """Returns an MPMatrix given by row_count rows, starting from k.
@@ -157,11 +190,9 @@ class MPMatrix:
 
     @staticmethod
     def zeros(m, n):
-        """Returns m by n matrix of zeros. No sparsity yet."""
-        data = dict()
-        for i in range(m):
-            for j in range(n):
-                data[(i, j)] = mpfr(0)
+        """Returns m by n matrix of zeros. No sparsity yet.
+        """
+        data = dict.fromkeys(itertools.product(range(m), range(n)), mpfr(0))
         return MPMatrix((m, n), data)
 
     def _house(self):
@@ -242,22 +273,8 @@ class MPMatrix:
         return
 
 
-def matrix_test1():
-    A = np.array([[1., 2], [100, 2]])
-    B = np.array([[0.01, 0.02], [0.3, 0.001]])
-    A_ = MPMatrix.import_array(A)
-    B_ = MPMatrix.import_array(B)
-    C = A_ + B_
-    D = A_ * B_
-    gmpy2.get_context().precision = 8
-    print((A + B)[(0, 0)], C.data[(0, 0)])
-    print((A + B)[(0, 0)], C[(0, 0)])
-    print((np.matmul(A, B))[(0, 0)], D[(0, 0)])
-    return (C, D)  #hand tested: this works as anticipated
-
-
 def main():
-    C, D = matrix_test1()
+    return
 
 
 if __name__ == "__main__":

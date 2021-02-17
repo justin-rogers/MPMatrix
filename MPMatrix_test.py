@@ -19,6 +19,7 @@ from MPMatrix import MPMatrix
 
 def _ptwise_vals_equal(mp_val, np_val, epsilon):
     """Pointwise value comparison"""
+    # TODO change to relative error bound or find appropriate absolute bound
     ptwise_diff = abs(mp_val - mpfr(np_val))
     return ptwise_diff < epsilon
 
@@ -230,9 +231,22 @@ class MpfrEps(unittest.TestCase):
 if __name__ == '__main__':
     print("Testing at P=53.")
     unittest.main(exit=False)
-    print("\nTesting at P=33.")
-    gmpy2.get_context().precision -= 20
+    print("\nTesting at P=30.")
+    gmpy2.get_context().precision = 30
     unittest.main(exit=False)
-    print("\nTesting at P=83.")
-    gmpy2.get_context().precision += 50
-    unittest.main()
+    print("\nTesting at P=80.")
+    gmpy2.get_context().precision = 80
+    unittest.main(exit=False)
+
+    # TODO: change relative error so these work
+    # print("\nTesting at P=4.")
+    # gmpy2.get_context().precision = 4
+    # unittest.main(exit=False)
+
+    # print("\nTesting at P=2.")
+    # gmpy2.get_context().precision = 2
+    # unittest.main(exit=False)
+
+    # print("\nTesting at P=1.")
+    # gmpy2.get_context().precision = 1
+    # unittest.main(exit=False)
