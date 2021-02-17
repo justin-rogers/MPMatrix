@@ -26,7 +26,7 @@ def _ptwise_vals_equal(mp_val, np_val, epsilon):
 def _assert_mp_equals_np(mp_array, np_array):
     """Compares an MPMatrix and np array, checking for equality.
     Returns an equality bool and an error string."""
-    m, n = mp_array.shape
+    m, n = np_array.shape
     coordinates = itertools.product(range(m), range(n))
     P = gmpy2.get_context().precision
     epsilon = mpfr("0b" + "0" * P + "1")
@@ -133,8 +133,33 @@ class get_rowMP(unittest.TestCase):
         A = 100 * np.random.rand(m, n)
         A_ = MPMatrix.import_array(A)
         k = random.randint(0, m - 1)
-        A_mp = A_.get_row(k)
+        A_mp = A_.get_rows(k, 1)
         A_np = A[k].reshape((1, n))
+        equality, log = _assert_mp_equals_np(A_mp, A_np)
+        return
+
+
+class get_rowsMP(unittest.TestCase):
+    def test(self):
+        m, n = random.randint(5, 10), random.randint(5, 10)
+        A = 100 * np.random.rand(m, n)
+        A_ = MPMatrix.import_array(A)
+        k = random.randint(0, m - 2)
+        row_count = random.randint(2, m - k)
+        A_mp = A_.get_rows(k, row_count)
+        A_np = A[k:k + row_count]
+        equality, log = _assert_mp_equals_np(A_mp, A_np)
+        return
+
+
+class get_all_rowsMP(unittest.TestCase):
+    def test(self):
+        m, n = random.randint(5, 10), random.randint(5, 10)
+        A = 100 * np.random.rand(m, n)
+        A_ = MPMatrix.import_array(A)
+        k = random.randint(0, m - 2)
+        A_mp = A_.get_rows(k, -1)
+        A_np = A[k:]
         equality, log = _assert_mp_equals_np(A_mp, A_np)
         return
 
@@ -147,6 +172,43 @@ class drop_rowMP(unittest.TestCase):
         k = random.randint(0, m - 1)
         A_mp = A_.drop_row(k)
         A_np = np.delete(A, k, 0)  # delete kth entry of 0th axis
+        equality, log = _assert_mp_equals_np(A_mp, A_np)
+        return
+
+
+class get_colMP(unittest.TestCase):
+    def test(self):
+        m, n = random.randint(1, 3), random.randint(1, 3)
+        A = 100 * np.random.rand(m, n)
+        A_ = MPMatrix.import_array(A)
+        k = random.randint(0, n - 1)
+        A_mp = A_.get_cols(k, 1)
+        A_np = A[:, k].reshape((m, 1))
+        equality, log = _assert_mp_equals_np(A_mp, A_np)
+        return
+
+
+class get_colsMP(unittest.TestCase):
+    def test(self):
+        m, n = random.randint(5, 10), random.randint(5, 10)
+        A = 100 * np.random.rand(m, n)
+        A_ = MPMatrix.import_array(A)
+        k = random.randint(0, n - 2)
+        col_count = random.randint(2, n - k)
+        A_mp = A_.get_cols(k, col_count)
+        A_np = A[:, k:k + col_count]
+        equality, log = _assert_mp_equals_np(A_mp, A_np)
+        return
+
+
+class get_all_colsMP(unittest.TestCase):
+    def test(self):
+        m, n = random.randint(5, 10), random.randint(5, 10)
+        A = 100 * np.random.rand(m, n)
+        A_ = MPMatrix.import_array(A)
+        k = random.randint(0, n - 2)
+        A_mp = A_.get_cols(k, -1)
+        A_np = A[:, k:].reshape((m, n - k))
         equality, log = _assert_mp_equals_np(A_mp, A_np)
         return
 

@@ -55,13 +55,40 @@ class MPMatrix:
         """Syntactic sugar for data read via tuple keys"""
         return self.data[key]
 
-    def get_row(self, k):
-        """Returns an MPMatrix given by row k"""
+    def __setitem__(self, key, val):
+        """Syntactic sugar for dict write via tuple keys"""
+        assert isinstance(val, type(mpfr(0)))  # test
+        self.data[key] = val
+
+    def get_rows(self, k, row_count):
+        """Returns an MPMatrix given by row_count rows, starting from k.
+        Equivalent to A[k:k+row_count] in numpy.
+        If row_count = -1, it returns all rows from k onward,
+        equivalent to A[k:] in numpy."""
         data = dict()
         n, m = self.shape
+
+        if row_count == -1:
+            row_count = n - k
         for j in range(m):
-            data[(0, j)] = self.data[(k, j)]
-        return MPMatrix((1, m), data)
+            for i in range(row_count):
+                data[(i, j)] = self.data[(k + i, j)]
+        return MPMatrix((row_count, m), data)
+
+    def get_cols(self, k, col_count):
+        """Returns an MPMatrix given by col_count columns, starting from k.
+        Equivalent to A[:, k:k+col_count] in numpy.
+        If col_count = -1, it returns all cols from k onward,
+        equivalent to A[:, k:] in numpy."""
+        data = dict()
+        n, m = self.shape
+
+        if col_count == -1:
+            col_count = m - k
+        for j in range(col_count):
+            for i in range(n):
+                data[(i, j)] = self.data[(i, k + j)]
+        return MPMatrix((n, col_count), data)
 
     def drop_row(self, k):
         """Returns an MPMatrix given by dropping row k and reindexing"""
@@ -78,10 +105,10 @@ class MPMatrix:
                     data[(i - 1, j)] = data.pop((i, j))
         return MPMatrix((n - 1, m), data)
 
-    def __setitem__(self, key, val):
-        """Syntactic sugar for dict write via tuple keys"""
-        assert isinstance(val, type(mpfr(0)))  # test
-        self.data[key] = val
+    def copy(self):
+        """Returns a copy of itself."""
+        data = self.data.copy()
+        return MPMatrix(self.shape, data)
 
     def scale(self, scalar):
         """A.scale(c) returns c*A, pointwise multiplication.
@@ -92,6 +119,29 @@ class MPMatrix:
             for j in range(m):
                 self[(i, j)] *= mpfr(scalar)
         return self
+
+    def ptwise(self, f):
+        """A.ptwise(f) returns an MPMatrix with f applied to each entry of A.
+        The function f should be well-defined on the mpfr type."""
+        n, m = self.shape
+        for i in range(n):
+            for j in range(m):
+                self[(i, j)] = f(self[(i, j)])
+        return self
+
+    def frob_prod(self, B):
+        """A.frob_prod(B) returns the Frobenius inner product <A,B>.
+        B is also an MPMatrix. Not implemented for complex types."""
+        n, m = self.shape
+        k, r = B.shape
+        assert (n == k
+                and m == r), ("Distinct shapes ({}, {}) and ({}, {})".format(
+                    n, m, k, r))
+        sum_ = 0
+        for i in range(n):
+            for j in range(m):
+                sum_ += self[(i, j)] * B[(i, j)]
+        return sum_
 
     @staticmethod
     def import_array(A):
