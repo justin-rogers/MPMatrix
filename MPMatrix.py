@@ -18,6 +18,7 @@ from gmpy2 import mpfr  # float class
 #               value.shape == (len(list1), len(list2)))`
 #   2. Use simple __setitem__ across enumerate(list1) and
 #       enumerate(list2) to match up the indices appropriately.
+# TODO: add copy method for views, to detach from parent
 
 
 class MPMatrix:
@@ -73,14 +74,78 @@ class MPMatrix:
 
         TODO: match these implementations to __setitem__
         """
+        if isinstance(key, int):  # Interpret as vector index if possible
+            flat_dim_idx = list(self.shape).index(1)
+            coords = [key, key]
+            coords[flat_dim_idx] = 0
+            key = tuple(coords)
+        r, c = key  # Can assume key is length-2 tuple
+        if isinstance(r, int) and isinstance(c, int):  # highest priority
+            return self.data[r, c]
+        m, n = self.shape
+        # Replace slices with index lists
+        if isinstance(r, slice):
+            r = list(range(m))[r]
+        if isinstance(c, slice):
+            c = list(range(n))[c]
 
-        # Simple indexing A[x]
-        return self.data[key]
+        # Already handled (int, int) case
+        if isinstance(r, int) and isinstance(c, list):  # (int, list)
+            return MPView(self, [r], c)
+        elif isinstance(r, list):
+            if isinstance(c, list):  # (list, list)
+                return MPView(self, r, c)
+            if isinstance(c, int):  # (list, int)
+                return MPView(self, r, [c])
+        else:
+            raise  # should not be accessed
 
     def __setitem__(self, key, val):
-        """Syntactic sugar for dict write via tuple keys"""
-        assert isinstance(val, type(mpfr(0)))
-        self.data[key] = val
+        """
+        Cases:
+        1. Key is a simple index, val is a simple mpfr.
+        1a. Key is two ints: basic case.
+        1b. Key is one int: coalesce to two ints.
+
+        2. Key indexes a submatrix. Val is another MPMatrix of appropriate size.
+        First, replace slices with index lists. Replace ints with index lists.
+        2a. Key is two lists: good.
+        2b. Key is a view: get p_rows, p_cols, case 2a.
+        
+        If Key is a view: we simply need to iterate and setitem.
+        """
+        if isinstance(key, int):  # Interpret as vector index if possible
+            flat_dim_idx = list(self.shape).index(1)
+            coords = [key, key]
+            coords[flat_dim_idx] = 0
+            key = tuple(coords)
+        if isinstance(key, MPView):
+            key = (key.p_rows, key.p_cols)
+        r, c = key  # Can assume key is length-2 tuple
+        if isinstance(r, int) and isinstance(
+                c, int):  # highest priority: simple write
+            assert isinstance(val, type(mpfr(0)))
+            self.data[key] = val
+            return
+        m, n = self.shape
+        # Clean ints and slices to get row/col index lists
+        if isinstance(r, int):
+            r = [r]
+        if isinstance(c, int):
+            c = [c]
+        if isinstance(r, slice):
+            r = list(range(m))[r]
+        if isinstance(c, slice):
+            c = list(range(n))[c]
+        assert (len(r), len(c)) == val.shape
+        # Local data indices: a, b.
+        # View indices: i, j
+        for i, a in enumerate(r):
+            for j, b in enumerate(c):
+                datum = val[i, j]
+                assert isinstance(datum, type(mpfr(0)))
+                self.data[a, b] = val[i, j]
+        return
 
     def __repr__(self):
         """Printable representation: print each entry,
@@ -284,6 +349,9 @@ class MPView(MPMatrix):
     def __init__(self, parent, p_rows, p_cols):
         """Initialize from parent and two lists of parent indices:
         p_rows is parent_rows, p_cols is parent_cols.
+        
+        Ex: If A.shape = (5,5), MPView(A, [2,3,4], [2,3,4]) will initialize
+        an MPView of shape (3,3), looking at the 3x3 bottom-right submatrix.
         """
         self.parent = parent  # TODO: verify this is memory-cheap
         self.p_rows, self.p_cols = p_rows, p_cols
@@ -334,29 +402,42 @@ class MPView(MPMatrix):
         
         Simple case, item = (int, int): 
             return parent index (int, int)
-        Flat case, item = int and view is vector-shaped:
+        Flat case, item = int; view is vector-shaped:
             return parent index (int, int)
         Slice case, item = (slice, slice):
             return coordinate lists (list[int], list[int])
         List case, item = (list[int], list[int]):
             return coordinate lists (list[int], list[int])
+        The following mixed indices are handled by appropriate casting:
+            (int, list), (int, slice), (slice, int), (list, slice)
         """
         if isinstance(item, int):  # Convert single int to view-coordinates
             flat_dim_idx = list(self.shape).index(1)
             coords = [item, item]
-            coords[flat_dim_idx] = 1
+            coords[flat_dim_idx] = 0
             item = tuple(coords)
-        assert isinstance(item, tuple)
-        assert len(item) == 2
         r, c = item
-        if isinstance(r, int):  # simple int pair
-            return self.get_parent_idx(item)
-        if isinstance(r, slice):  # slice pair
-            return self.slices_to_lists(r, c)
-        if isinstance(r, list) and isinstance(r[0], int):  # list[int] pair
+        if isinstance(r, int):
+            if isinstance(c, int):  # simple int pair: return early
+                return self.get_parent_idx(item)
+            # If only one of r and c is an int, wrap in list.
+            r = [r]
+        if isinstance(c, int):
+            c = [c]
+
+        # Convert slices to index lists
+        if isinstance(r, slice):
+            r = self.p_rows[r]
+        if isinstance(c, slice):
+            c = self.p_cols[c]
+
+        # Anything remaining should be an index list.
+        if isinstance(r, list) and isinstance(c, list):
             new_rows = [self.p_rows[i] for i in r]
             new_cols = [self.p_cols[j] for j in c]
             return new_rows, new_cols
+        else:
+            raise
 
     def __getitem__(self, item):
         """Reindex and use parent's __getitem__"""
