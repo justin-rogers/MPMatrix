@@ -3,54 +3,60 @@ import gmpy2
 import itertools
 from gmpy2 import mpfr  # float class
 
-#   Attributes:
-#       * shape
-#       * data accessible as tuple-indexed dictionary
-#       ! precision doesn't live at this structural level.
-#   Methods:
-#       # basic matrix ops using global context
-#       * add two matrices
-#       * multiply two matrices
-#       * scalar multiplication by an mpfr?
-#
-# TODO: scalar mult
+# TODO: lower-priority: get speedups from in place ops: *=, /=, +=, -=
+# TODO: give MPMatrix access to a MPView.reindex equivalent.
+#   No need for the actual reindexing: just re-use the parts of the code
+#   which check for types and cast to lists, etc.
+# TODO: augment MPMatrix.__getitem__
+#   1. Clean the argument (see above) to obtain (int, int)
+#       or (list[int], list[int]).
+#   2. MPMatrix.__getitem__((list[int], list[int])) should return a view.
+# TODO: augment MPMatrix.__setitem__
+#   0. Clean the key as above.
+#   1. To implement the MPMatrix[list1, list2] case:
+#       Verify `(isinstance(value, MPMatrix) and
+#               value.shape == (len(list1), len(list2)))`
+#   2. Use simple __setitem__ across enumerate(list1) and
+#       enumerate(list2) to match up the indices appropriately.
 
 
 class MPMatrix:
+    """Mixed precision matrix class: matrix ops implemented pointwise
+    using gmpy2.mpfr"""
     def __init__(self, shape, data):
-        """shape (n,m)
+        """shape (m, n)
         data is a dict of tuple-index 'mpfr' objects"""
         self.shape = shape
         self.data = data
 
     def __add__(self, B):
         """B is another MPMatrix, returns A+B using global ctx"""
-        n, m = self.shape
+        m, n = self.shape
         k, r = B.shape
-        assert (n == k
-                and m == r), ("Cannot add shapes ({}, {}) and ({}, {})".format(
-                    n, m, k, r))
+        assert (m == k
+                and n == r), ("Cannot add shapes ({}, {}) and ({}, {})".format(
+                    m, n, k, r))
         sum_ = dict()
-        for i in range(n):
-            for j in range(m):
-                sum_[(i, j)] = self.data[(i, j)] + B.data[(i, j)]
-        return MPMatrix((n, m), sum_)
+        for i in range(m):
+            for j in range(n):
+                sum_[i, j] = self[i, j] + B[i, j]
+        return MPMatrix((m, n), sum_)
 
     def __mul__(self, B):
         """B is another MPMatrix, returns A*B using global ctx"""
-        n, m = self.shape
-        m_, r = B.shape
-        assert m == m_, ("Cannot multiply shapes "
-                         "({}, {}) and ({}, {})".format(n, m, m_, r))
+        m, n = self.shape
+        n_, r = B.shape
+        assert n == n_, ("Cannot multiply shapes "
+                         "({}, {}) and ({}, {})".format(m, n, n_, r))
         mul_ = dict()
         # compute A_ik = sum_j A_ij*B_jk
-        for i in range(n):
+        for i in range(m):
             for k in range(r):
                 prod = mpfr(0)
-                for j in range(m):
-                    prod += self.data[(i, j)] * B.data[(j, k)]
-                mul_[(i, k)] = prod
-        return MPMatrix((n, r), mul_)
+                for j in range(n):
+                    prod += self[i, j] * B[j, k]
+                mul_[i, k] = prod
+        return MPMatrix((m, r), mul_)
 
     def __getitem__(self, key):
         """Syntactic sugar for data read via tuple keys
@@ -147,32 +153,32 @@ class MPMatrix:
         """A.scale(c) returns c*A, pointwise multiplication.
         For precise scaling, provide the scalar as a string, e.g. "1.233".
         """
-        n, m = self.shape
-        for i in range(n):
-            for j in range(m):
+        m, n = self.shape
+        for i in range(m):
+            for j in range(n):
                 self[(i, j)] *= mpfr(scalar)
         return self
 
     def ptwise(self, f):
         """A.ptwise(f) returns an MPMatrix with f applied to each entry of A.
         The function f should be well-defined on the mpfr type."""
-        n, m = self.shape
-        for i in range(n):
-            for j in range(m):
+        m, n = self.shape
+        for i in range(m):
+            for j in range(n):
                 self[(i, j)] = f(self[(i, j)])
         return self
 
     def frob_prod(self, B):
         """A.frob_prod(B) returns the Frobenius inner product <A,B>.
         B is also an MPMatrix. Not implemented for complex types."""
-        n, m = self.shape
+        m, n = self.shape
         k, r = B.shape
-        assert (n == k
-                and m == r), ("Distinct shapes ({}, {}) and ({}, {})".format(
-                    n, m, k, r))
+        assert (m == k
+                and n == r), ("Distinct shapes ({}, {}) and ({}, {})".format(
+                    m, n, k, r))
         sum_ = 0
-        for i in range(n):
-            for j in range(m):
+        for i in range(m):
+            for j in range(n):
                 sum_ += self[(i, j)] * B[(i, j)]
         return sum_
 
@@ -181,12 +187,12 @@ class MPMatrix:
         """A is, e.g., numpy array"""
         d = len(A.shape)
         assert d == 2, "Cannot import {} dimension array, need 2".format(d)
-        n, m = A.shape
+        m, n = A.shape
         data = dict()
-        for i in range(n):
-            for j in range(m):
-                data[(i, j)] = mpfr(A[(i, j)])
-        return MPMatrix((n, m), data)
+        for i in range(m):
+            for j in range(n):
+                data[i, j] = mpfr(A[(i, j)])
+        return MPMatrix((m, n), data)
 
     @staticmethod
     def zeros(m, n):
@@ -215,7 +221,7 @@ class MPMatrix:
         """
         m, n = self.shape
         assert n == 1, "need shape (m,1); have ({}, {})".format(m, n)
-        alpha = self.data(0, 0)
+        alpha = self[0, 0]
         y = self.drop_row(0)
         sigma = y.frob_prod(y)  #norm squared
 
@@ -247,8 +253,8 @@ class MPMatrix:
         data = dict()
         length = m - k
         for i in range(length):
-            # Equivalent to self.data[k:, k] in numpy notation
-            data[(i, 0)] = self.data[(k + i, k)]
+            # Equivalent to self[k:, k] in numpy notation
+            data[(i, 0)] = self[k + i, k]
         reflect_me = MPMatrix((length, 1), data)
         v, beta = _house(reflect_me)
 
@@ -257,7 +263,7 @@ class MPMatrix:
         scalar = 1 - beta * v.frob_prod(v)
         for i in range(k, m):
             for j in range(k, n):
-                self.data[(i, j)] *= scalar
+                self[i, j] *= scalar
                 # Could we optimize this by storing scalars for n minors?
         return
 
@@ -273,7 +279,111 @@ class MPMatrix:
         return
 
 
+class MPView(MPMatrix):
+    """View of MPMatrix: same underlying data, cf. numpy model."""
+    def __init__(self, parent, p_rows, p_cols):
+        """Initialize from parent and two lists of parent indices:
+        p_rows is parent_rows, p_cols is parent_cols.
+        """
+        self.parent = parent  # TODO: verify this is memory-cheap
+        self.p_rows, self.p_cols = p_rows, p_cols
+        new_m = len(self.p_rows)
+        new_n = len(self.p_cols)
+        self.shape = (new_m, new_n)
+
+        # If B is a matrix view of A, any row/col of B has two indices:
+        # the view index in B and the parent index in A.
+        # These lists are stored for easy index conversion:
+        # self.p_rows[view_row_idx] = parent_row_idx
+
+        # Use this for generating p_rows, p_cols in the caller.
+        # m, n = self.parent.shape
+        # self.p_rows = list(range(m))[row_slice]
+        # self.p_cols = list(range(n))[col_slice]
+        return
+
+    def get_view_idx(self, parent_idx):
+        """Index conversion from parent index (i,j) to child index (a,b).
+        An out-of-bounds index raises an exception.
+        """
+        a = self.p_rows.index(i)
+        b = self.p_cols.index(j)
+        return (a, b)
+
+    def get_parent_idx(self, view_idx):
+        """Index conversion from child index (a,b) to parent index (i,j).
+        An out-of-bounds index raises an exception.
+        """
+        a, b = view_idx
+        R, C = self.shape
+        i = self.p_rows[a]
+        j = self.p_cols[b]
+        return (i, j)
+
+    def slices_to_lists(self, row_slice, col_slice):
+        """Converts slices in child to lists in parent.
+        This is used when we take a view of a view.
+        """
+        next_rows = self.p_rows[row_slice]
+        next_cols = self.p_cols[col_slice]
+        return (next_rows, next_cols)
+
+    def reindex(self, item):
+        """Converts view index objects to parent index objects, which
+        may be consumed by parent.__getitem__ and parent.__setitem__.
+        
+        Simple case, item = (int, int): 
+            return parent index (int, int)
+        Flat case, item = int and view is vector-shaped:
+            return parent index (int, int)
+        Slice case, item = (slice, slice):
+            return coordinate lists (list[int], list[int])
+        List case, item = (list[int], list[int]):
+            return coordinate lists (list[int], list[int])
+        """
+        if isinstance(item, int):  # Convert single int to view-coordinates
+            flat_dim_idx = list(self.shape).index(1)
+            coords = [item, item]
+            coords[flat_dim_idx] = 1
+            item = tuple(coords)
+        assert isinstance(item, tuple)
+        assert len(item) == 2
+        r, c = item
+        if isinstance(r, int):  # simple int pair
+            return self.get_parent_idx(item)
+        if isinstance(r, slice):  # slice pair
+            return self.slices_to_lists(r, c)
+        if isinstance(r, list) and isinstance(r[0], int):  # list[int] pair
+            new_rows = [self.p_rows[i] for i in r]
+            new_cols = [self.p_cols[j] for j in c]
+            return new_rows, new_cols
+
+    def __getitem__(self, item):
+        """Reindex and use parent's __getitem__"""
+        return self.parent[self.reindex(item)]
+
+    def __setitem__(self, item):
+        """Reindex and use parent's __setitem__"""
+        self.parent.__setitem__(self.reindex(item))
+
+
+class IndexFetcher:
+    """Following numpy.IndexExpression, utility class for index hacks."""
+    def __getitem__(self, item):
+        return item
+
+
 def main():
+    s = IndexFetcher()
+    slice1, slice2 = s[1:, :]
+    slice3 = s[:-1:-1]
+    x, y = s[2, 3]
+    print(x, y)
+    print(isinstance(x, slice))
+    print(isinstance(slice1, slice))
+    print(slice3)
+    print(slice3.indices(10))
+
     return
 
 
