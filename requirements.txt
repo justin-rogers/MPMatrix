@@ -1,0 +1,16 @@
+backcall==0.2.0
+decorator==4.4.2
+gmpy2==2.0.8
+guppy3==3.1.0
+ipython==7.20.0
+ipython-genutils==0.2.0
+jedi==0.18.0
+numpy==1.20.0
+parso==0.8.1
+pexpect==4.8.0
+pickleshare==0.7.5
+prompt-toolkit==3.0.16
+ptyprocess==0.7.0
+Pygments==2.8.0
+traitlets==5.0.5
+wcwidth==0.2.5
