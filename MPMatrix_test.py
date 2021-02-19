@@ -17,10 +17,13 @@ from guppy import hpy
 #   creates a new one (or uses passed context), applies **kwargs.
 # Can simulate arbitrary floats by choice of emin, emax, precision.
 
+# TODO change to relative error bound or find appropriate absolute bounds
+# Tests currently are effective when context precision is default (53)
+# Further rounding error analysis and investigation is forthcoming.
+
 
 def _ptwise_vals_equal(mp_val, np_val, epsilon):
     """Pointwise value comparison"""
-    # TODO change to relative error bound or find appropriate absolute bound
     ptwise_diff = abs(mp_val - mpfr(np_val))
     if epsilon == None:
         P = gmpy2.get_context().precision
@@ -33,7 +36,7 @@ def _assert_mp_equals_np(mp_array, np_array):
     Returns an equality bool and an error string."""
     m, n = np_array.shape
     coordinates = itertools.product(range(m), range(n))
-    P = gmpy2.get_context().precision
+    P = gmpy2.get_context().precision  # TODO: need this to be relative
     epsilon = mpfr("0b" + "0" * P + "1")
     for coord in coordinates:
         mp_val = mp_array[coord]
@@ -319,9 +322,6 @@ class SetCol(unittest.TestCase):
 def multiprec_test():
     print("Testing at P=53.")
     unittest.main(exit=False)
-    print("\nTesting at P=30.")
-    gmpy2.get_context().precision = 30
-    unittest.main(exit=False)
     print("\nTesting at P=80.")
     gmpy2.get_context().precision = 80
     unittest.main(exit=False)
@@ -350,27 +350,39 @@ def test_views():
     suite.addTest(GetPtFromRow(methodName='test'))
     suite.addTest(GetPtViewFromPtView(methodName='test'))
     suite.addTest(GetPtFromPtView(methodName='test'))
-
     runner = unittest.TextTestRunner()
     runner.run(suite)
 
 
 def memory_check():
+    """Manually investigating memory usage to verify views are effective.
+    For a matrix with one million doubles, a numpy array is approximately
+    25x more memory-efficient than an MPMatrix.
+    
+    Most of this is overhead: modifying the context precision leads to
+    very minor increases in context precision.
+    
+    Views have negligible memory costs.
+    """
     m, n = 1000, 1000
+
+    print("Pre initialization")
+    print(hpy().heap())  # 14.3 Mb
     A = 100 * np.random.rand(m, n)
+    print("NP initialized")
+    print(hpy().heap())  # 22.3 Mb
     A_ = MPMatrix.import_array(A)
-    print(hpy().heap())
-    B = A_[1:, :]
-    print("Post-view:")
-    print(hpy().heap())
+    print("MP initialized")
+    print(hpy().heap())  # 245 Mb
+    # Adding a view changes this to something like 245.1 Mb.
 
 
 if __name__ == '__main__':
-    memory_check()
-    #test_views()
-    #multiprec_test()
+    # memory_check()
+    # test_views()
+    multiprec_test()
 
-    # TODO: change relative error so these work
+    # TODO: change relative error so these are tested appropriately.
     # print("\nTesting at P=4.")
     # gmpy2.get_context().precision = 4
     # unittest.main(exit=False)
