@@ -164,51 +164,6 @@ class MPMatrix:
         ]
         return '\n'.join(lines)
 
-    def get_rows(self, k, row_count):
-        """Returns an MPMatrix given by row_count rows, starting from k.
-        Equivalent to A[k:k+row_count] in numpy.
-        If row_count = -1, it returns all rows from k onward,
-        equivalent to A[k:] in numpy."""
-        data = dict()
-        n, m = self.shape
-
-        if row_count == -1:
-            row_count = n - k
-        for j in range(m):
-            for i in range(row_count):
-                data[(i, j)] = self.data[(k + i, j)]
-        return MPMatrix((row_count, m), data)
-
-    def get_cols(self, k, col_count):
-        """Returns an MPMatrix given by col_count columns, starting from k.
-        Equivalent to A[:, k:k+col_count] in numpy.
-        If col_count = -1, it returns all cols from k onward,
-        equivalent to A[:, k:] in numpy."""
-        data = dict()
-        n, m = self.shape
-
-        if col_count == -1:
-            col_count = m - k
-        for j in range(col_count):
-            for i in range(n):
-                data[(i, j)] = self.data[(i, k + j)]
-        return MPMatrix((n, col_count), data)
-
-    def drop_row(self, k):
-        """Returns an MPMatrix given by dropping row k and reindexing"""
-        data = self.data.copy()
-        n, m = self.shape
-        for i in range(n):
-            if i < n:
-                pass
-            elif i == n:  # delete all keys
-                for j in range(m):
-                    del data[(i, j)]
-            else:  # reindex all keys
-                for j in range(m):
-                    data[(i - 1, j)] = data.pop((i, j))
-        return MPMatrix((n - 1, m), data)
-
     def copy(self):
         """Returns a copy of itself."""
         data = self.data.copy()
@@ -370,6 +325,15 @@ class MPView(MPMatrix):
         # self.p_cols = list(range(n))[col_slice]
         return
 
+    def copy(self):
+        """Returns a full-fledged MPMatrix with the same indices as the view."""
+        data = dict()
+        m, n = self.shape
+        for i in range(m):
+            for j in range(n):
+                data[i, j] = self[i, j]
+        return MPMatrix(self.shape, data)
+
     def get_view_idx(self, parent_idx):
         """Index conversion from parent index (i,j) to child index (a,b).
         An out-of-bounds index raises an exception.
@@ -387,14 +351,6 @@ class MPView(MPMatrix):
         i = self.p_rows[a]
         j = self.p_cols[b]
         return (i, j)
-
-    def slices_to_lists(self, row_slice, col_slice):
-        """Converts slices in child to lists in parent.
-        This is used when we take a view of a view.
-        """
-        next_rows = self.p_rows[row_slice]
-        next_cols = self.p_cols[col_slice]
-        return (next_rows, next_cols)
 
     def reindex(self, item):
         """Converts view index objects to parent index objects, which
@@ -455,16 +411,6 @@ class IndexFetcher:
 
 
 def main():
-    s = IndexFetcher()
-    slice1, slice2 = s[1:, :]
-    slice3 = s[:-1:-1]
-    x, y = s[2, 3]
-    print(x, y)
-    print(isinstance(x, slice))
-    print(isinstance(slice1, slice))
-    print(slice3)
-    print(slice3.indices(10))
-
     return
 
 

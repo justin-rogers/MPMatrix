@@ -369,12 +369,24 @@ def memory_check():
     print("Pre initialization")
     print(hpy().heap())  # 14.3 Mb
     A = 100 * np.random.rand(m, n)
+
     print("NP initialized")
     print(hpy().heap())  # 22.3 Mb
     A_ = MPMatrix.import_array(A)
+
     print("MP initialized")
-    print(hpy().heap())  # 245 Mb
-    # Adding a view changes this to something like 245.1 Mb.
+    print(hpy().heap())  # 213 Mb
+    # Adding a view is less than 1Mb overhead
+
+    print("Adding a minimal list implementation of the same data")
+    B_ = [mpfr(x) for x in A.flatten()]
+    print(hpy().heap())  # 294 Mb
+
+    # Numpy array:   8     Mb
+    # MPMatrix:      190.7 Mb
+    # List of MPFRs: 81    Mb
+    # So a more efficient indexing structure might halve our memory footprint
+    # But will likely involve a tradeoff in lookup time.
 
 
 if __name__ == '__main__':
