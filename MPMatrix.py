@@ -4,21 +4,8 @@ import itertools
 from gmpy2 import mpfr  # float class
 
 # TODO: lower-priority: get speedups from in place ops: *=, /=, +=, -=
-# TODO: give MPMatrix access to a MPView.reindex equivalent.
-#   No need for the actual reindexing: just re-use the parts of the code
-#   which check for types and cast to lists, etc.
-# TODO: augment MPMatrix.__getitem__
-#   1. Clean the argument (see above) to obtain (int, int)
-#       or (list[int], list[int]).
-#   2. MPMatrix.__getitem__((list[int], list[int])) should return a view.
-# TODO: augment MPMatrix.__setitem__
-#   0. Clean the key as above.
-#   1. To implement the MPMatrix[list1, list2] case:
-#       Verify `(isinstance(value, MPMatrix) and
-#               value.shape == (len(list1), len(list2)))`
-#   2. Use simple __setitem__ across enumerate(list1) and
-#       enumerate(list2) to match up the indices appropriately.
-# TODO: add copy method for views, to detach from parent
+# TODO: abstract the index-cleaning part of __getitem__ and __setitem__
+# on MPMatrix and MPView
 
 
 class MPMatrix:
@@ -66,13 +53,18 @@ class MPMatrix:
         
         0. A[(i,j)] returns the (i,j) entry.
 
-        TODO: 1. A[i, j] returns the (i,j) entry.
+        1. A[i, j] returns the (i,j) entry.
 
-        TODO: 2. If A.shape is (m, 1) or (1, n): you may use integer indexing A[i].
+        2. If A.shape is (m, 1) or (1, n): you may use integer indexing A[i].
         
-        TODO: implement views, return them for A[i:, j:] notations.
+        To access multiple values: key should specify a view.
+        The key type must be a length-2 tuple, where each entry can be
+        a slice, index list, or int.
 
-        TODO: match these implementations to __setitem__
+        Example: A[[2], [4,5,6]] will attempt to return a view of the
+        submatrix given by row 2, columns 4, 5, and 6.
+
+        A[2, [4,5,6]] and A[2, 4:7] are valid ways to obtain the same submatrix.
         """
         if isinstance(key, int):  # Interpret as vector index if possible
             flat_dim_idx = list(self.shape).index(1)
@@ -221,6 +213,8 @@ class MPMatrix:
         data = dict.fromkeys(itertools.product(range(m), range(n)), mpfr(0))
         return MPMatrix((m, n), data)
 
+# TODO: this implementation depends on deprecated functions, fix.
+
     def _house(self):
         """Householder reflection, defined for column vector shapes x=(m,1).
         Returns (v, beta), where v is a column vector v with v[0]=1,
@@ -261,6 +255,8 @@ class MPMatrix:
             v = v.scale(1 / new_v0)
             return v, beta
 
+# TODO: fix deprecated function calls
+
     def _house_minor_update(self, k):
         """Utility function used for algorithm 5.2.1, pg 273,
         Matrix Computation 4th ed.
@@ -287,6 +283,9 @@ class MPMatrix:
                 # Could we optimize this by storing scalars for n minors?
         return
 
+
+# TODO: finish implementation after callees are refactored
+
     def QR(self):
         """Perform QR factorization with householder reflections.
         O(n^3), stable."""
@@ -308,7 +307,7 @@ class MPView(MPMatrix):
         Ex: If A.shape = (5,5), MPView(A, [2,3,4], [2,3,4]) will initialize
         an MPView of shape (3,3), looking at the 3x3 bottom-right submatrix.
         """
-        self.parent = parent  # TODO: verify this is memory-cheap
+        self.parent = parent
         self.p_rows, self.p_cols = p_rows, p_cols
         new_m = len(self.p_rows)
         new_n = len(self.p_cols)
