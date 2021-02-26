@@ -4,7 +4,7 @@ import gmpy2
 from gmpy2 import mpfr  # float class
 import itertools
 import random
-from MPMatrix import MPMatrix
+from MPMatrix import MPMatrix, import_array, zeros
 from guppy import hpy
 
 # See: https://gmpy2.readthedocs.io/en/latest/mpfr.html
@@ -71,7 +71,7 @@ class ImportNP(unittest.TestCase):
     def test(self):
         n = random.randint(1, 3)
         A = 100 * np.random.rand(n, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         equality, log = _assert_mp_equals_np(A_, A)
         self.assertTrue(equality, msg=log)
 
@@ -80,8 +80,8 @@ class AddMP(unittest.TestCase):
     def test(self):
         m, n = random.randint(1, 3), random.randint(1, 3)
         A, B = 100 * np.random.rand(m, n), 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
-        B_ = MPMatrix.import_array(B)
+        A_ = import_array(A)
+        B_ = import_array(B)
         equality, log = _assert_mp_equals_np(A_ + B_, A + B)
         self.assertTrue(equality, msg=log)
 
@@ -92,8 +92,8 @@ class MatMulMP(unittest.TestCase):
         m, n = random.randint(1, 3), random.randint(1, 3)
         k = random.randint(1, 3)
         A, B = 100 * np.random.rand(m, k), 100 * np.random.rand(k, n)
-        A_ = MPMatrix.import_array(A)
-        B_ = MPMatrix.import_array(B)
+        A_ = import_array(A)
+        B_ = import_array(B)
         AB_np = np.matmul(A, B)
         AB_mp = A_ * B_
         equality, log = _assert_mp_equals_np(AB_mp, AB_np)
@@ -106,7 +106,7 @@ class ScaleFloatMP(unittest.TestCase):
         m, n = random.randint(1, 3), random.randint(1, 3)
         A = 100 * np.random.rand(m, n)
         c = random.random()  # float in [0,1)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         cA_np = c * A
         cA_mp = A_.scale(c)
         equality, log = _assert_mp_equals_np(cA_mp, cA_np)
@@ -119,7 +119,7 @@ class ScaleStringMP(unittest.TestCase):
         m, n = random.randint(1, 3), random.randint(1, 3)
         A = 100 * np.random.rand(m, n)
         c = random.random()  # float in [0,1)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         cA_np = c * A
         cA_mp = A_.scale(str(c))
         equality, log = _assert_mp_equals_np(cA_mp, cA_np)
@@ -129,7 +129,7 @@ class ScaleStringMP(unittest.TestCase):
 class ZerosMP(unittest.TestCase):
     def test(self):
         m, n = random.randint(1, 3), random.randint(1, 3)
-        A_mp = MPMatrix.zeros(m, n)
+        A_mp = zeros(m, n)
         A_np = np.zeros((m, n))
         equality, log = _assert_mp_equals_np(A_mp, A_np)
         self.assertTrue(equality, msg=log)
@@ -139,7 +139,7 @@ class GetRowViewFromRect(unittest.TestCase):
     def test(self):
         m, n = 4, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         k = 3
         A_mp = A_[k, :]
         A_np = A[np.newaxis, k, :]
@@ -151,7 +151,7 @@ class GetColViewFromRect(unittest.TestCase):
     def test(self):
         m, n = 4, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         k = 3
         A_mp = A_[:, k]
         A_np = A[:, k, np.newaxis]
@@ -164,7 +164,7 @@ class GetPtViewFromRect(unittest.TestCase):
     def test(self):
         m, n = 4, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         A_mp = A_[2:3, 2:3]
         A_np = A[2:3, 2:3]
         equality, log = _assert_mp_equals_np(A_mp, A_np)
@@ -175,7 +175,7 @@ class GetRowViewFromCol(unittest.TestCase):
     def test(self):
         m, n = 4, 1
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         k = 3
         A_mp = A_[k, :]
         A_np = A[np.newaxis, k, :]
@@ -187,7 +187,7 @@ class GetColViewFromCol(unittest.TestCase):
     def test(self):
         m, n = 4, 1
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         k = 0
         A_mp = A_[:, k]
         A_np = A[k, :, np.newaxis]
@@ -199,7 +199,7 @@ class GetPtViewFromCol(unittest.TestCase):
     def test(self):
         m, n = 4, 1
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         A_mp = A_[2:3, :]
         A_np = A[2:3, :]
         equality, log = _assert_mp_equals_np(A_mp, A_np)
@@ -211,7 +211,7 @@ class GetPtFromCol(unittest.TestCase):
     def test(self):
         m, n = 4, 1
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         A_mp = A_[2]
         A_np = A[2, 0]
         equality = _ptwise_vals_equal(A_mp, A_np, None)
@@ -222,7 +222,7 @@ class GetRowViewFromRow(unittest.TestCase):
     def test(self):
         m, n = 1, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         A_mp = A_[0, 1:]
         A_np = A[:, 1:]
         equality, log = _assert_mp_equals_np(A_mp, A_np)
@@ -233,7 +233,7 @@ class GetColViewFromRow(unittest.TestCase):
     def test(self):
         m, n = 1, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         A_mp = A_[:, 0]
         A_np = A[:, 0:1]
         equality, log = _assert_mp_equals_np(A_mp, A_np)
@@ -244,7 +244,7 @@ class GetPtViewFromRow(unittest.TestCase):
     def test(self):
         m, n = 1, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         A_mp = A_[:, 2:3]
         A_np = A[:, 2:3]
         equality, log = _assert_mp_equals_np(A_mp, A_np)
@@ -256,7 +256,7 @@ class GetPtFromRow(unittest.TestCase):
     def test(self):
         m, n = 1, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         A_mp = A_[2]
         A_np = A[0, 2]
         equality = _ptwise_vals_equal(A_mp, A_np, None)
@@ -267,7 +267,7 @@ class GetPtViewFromPtView(unittest.TestCase):
     def test(self):
         m, n = 1, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         A_np = A[:, 2:3]
         A_int = A_[[0], [2]]
         A_mp = A_int[[0], [0]]
@@ -279,7 +279,7 @@ class GetPtFromPtView(unittest.TestCase):
     def test(self):
         m, n = 1, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         A_np = A[0, 2]
         A_int = A_[[0], [2]]
         A_mp = A_int[0]
@@ -293,9 +293,9 @@ class SetRow(unittest.TestCase):
     def test(self):
         m, n = 6, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         B = 100 * np.random.rand(m, n)
-        B_ = MPMatrix.import_array(B)
+        B_ = import_array(B)
         A_[2, :] = B_[2, :]
         A[2, :] = B[2, :]
         A_mp = A_
@@ -308,9 +308,9 @@ class SetCol(unittest.TestCase):
     def test(self):
         m, n = 6, 5
         A = 100 * np.random.rand(m, n)
-        A_ = MPMatrix.import_array(A)
+        A_ = import_array(A)
         B = 100 * np.random.rand(m, n)
-        B_ = MPMatrix.import_array(B)
+        B_ = import_array(B)
         A_[:, 2] = B_[:, 2]
         A[:, 2] = B[:, 2]
         A_mp = A_
@@ -372,7 +372,7 @@ def memory_check():
 
     print("NP initialized")
     print(hpy().heap())  # 22.3 Mb
-    A_ = MPMatrix.import_array(A)
+    A_ = import_array(A)
 
     print("MP initialized")
     print(hpy().heap())  # 213 Mb

@@ -8,12 +8,40 @@ from gmpy2 import mpfr  # float class
 # on MPMatrix and MPView
 
 
+def import_array(A):
+    """A is, e.g., numpy array"""
+    d = len(A.shape)
+    assert d == 2, "Cannot import {} dimension array, need 2".format(d)
+    m, n = A.shape
+    data = dict()
+    for i in range(m):
+        for j in range(n):
+            data[i, j] = mpfr(A[(i, j)])
+    return MPMatrix((m, n), data)
+
+
+def zeros(m, n):
+    """Returns m by n matrix of zeros. No sparsity yet.
+    """
+    data = dict.fromkeys(itertools.product(range(m), range(n)), mpfr(0))
+    return MPMatrix((m, n), data)
+
+
+def eye(m):
+    """Return m by m identity MPMatrix"""
+    data = dict()
+    for i, j in range(itertools.product(range(m), range(m))):
+        data[i, j] = mpfr(i == j)
+    return MPMatrix((m, m), data)
+
+
 class MPMatrix:
     """Mixed precision matrix class: matrix ops implemented pointwise
     using gmpy2.mpfr"""
     def __init__(self, shape, data):
         """shape (m, n)
-        data is a dict of tuple-index 'mpfr' objects"""
+        data is a dict of tuple-index 'mpfr' objects
+        """
         self.shape = shape
         self.data = data
 
@@ -46,6 +74,55 @@ class MPMatrix:
                 mul_[i, k] = prod
         return MPMatrix((m, r), mul_)
 
+    def _cleankey(self, key):
+        """Cleans __getitem_ input.
+        If key is an int, it will be interpreted as a vector index if possible.
+            Ex: v is a row vector, v[0] will return the 0th entry of v.
+            If it cannot be interpreted as a vector index,
+                it is interpreted as a row index.
+        
+        If key is a slice, it is converted to a list.
+
+        If key is a list, it will be interpreted as a list of vector indices
+            if possible. Otherwise it will be interpreted as a list of
+            row indices.
+
+        If key is a tuple:
+            Convert each entry to a list:
+                a int -> [a] list
+                a:b:c slice -> [a, a+c, ... a+nc] list
+                    (by applying the slice to the row or column indices)
+        
+        Always returns (row_indices, column_indices) index of the given key.
+        """
+        if isinstance(key, tuple) and len(key) == 2 and isinstance(
+                key[0], list) and isinstance(key[1], list):
+            return key
+
+        m, n = self.shape
+
+        if isinstance(key, int) or isinstance(key, slice) or isinstance(
+                key, list):  # One index given, check if vector shaped.
+            if m == 1:  # row vector case
+                key = ([0], key)
+            elif n == 1:  # col vector case
+                key = (key, [0])
+            else:  # interpret as row indexes
+                key = (key, slice(None, None, None))
+        row_key, col_key = key
+
+        if isinstance(row_key, slice):
+            row_key = list(range(m))[row_key]
+        elif isinstance(row_key, int):
+            row_key = [row_key]
+
+        if isinstance(col_key, slice):
+            col_key = list(range(n))[col_key]
+        elif isinstance(col_key, int):
+            col_key = [col_key]
+
+        return (row_key, col_key)
+
     def __getitem__(self, key):
         """Syntactic sugar for data read via tuple keys
         
@@ -66,15 +143,28 @@ class MPMatrix:
 
         A[2, [4,5,6]] and A[2, 4:7] are valid ways to obtain the same submatrix.
         """
-        if isinstance(key, int):  # Interpret as vector index if possible
-            flat_dim_idx = list(self.shape).index(1)
-            coords = [key, key]
-            coords[flat_dim_idx] = 0
-            key = tuple(coords)
+        if isinstance(key, int):  # One int index, interpret as vector index.
+            try:
+                flat_dim_idx = list(self.shape).index(1)
+                coords = [key, key]
+                coords[flat_dim_idx] = 0
+                key = tuple(coords)
+            except ValueError:  # 1 is not in the list, interpret as row index
+                key = (key, slice(None, None, None))
+        m, n = self.shape
+        if isinstance(key, slice):  # One slice index, interpret as row index.
+            # Small inconsistency with integer-indexing. I don't think
+            # there's a workaround unless I use np's approach of cutting dims
+            # Indexing of the form A[x:y] will be interpreted as row indices.
+            # So if A is shaped like a row vector, you cannot use a single slice
+            # to index it, as if it were a list.
+            key = (key, slice(None, None, None))
+        if isinstance(key, list):  # One list index, same as above.
+            key = (key, slice(None, None, None))
+
         r, c = key  # Can assume key is length-2 tuple
         if isinstance(r, int) and isinstance(c, int):  # highest priority
             return self.data[r, c]
-        m, n = self.shape
         # Replace slices with index lists
         if isinstance(r, slice):
             r = list(range(m))[r]
@@ -146,6 +236,9 @@ class MPMatrix:
         Will not look pretty if the array is too wide.
         """
         m, n = self.shape
+        if 0 in (m, n):
+            return "Empty or invalid MPMatrix of shape {}".format(self.shape)
+
         all_strings = [[self[i, j].__str__() for j in range(n)]
                        for i in range(m)]
         max_len = max(
@@ -194,24 +287,10 @@ class MPMatrix:
                 sum_ += self[(i, j)] * B[(i, j)]
         return sum_
 
-    @staticmethod
-    def import_array(A):
-        """A is, e.g., numpy array"""
-        d = len(A.shape)
-        assert d == 2, "Cannot import {} dimension array, need 2".format(d)
-        m, n = A.shape
-        data = dict()
-        for i in range(m):
-            for j in range(n):
-                data[i, j] = mpfr(A[(i, j)])
-        return MPMatrix((m, n), data)
+    def T(self):
+        m, n = self.shape
+        return MPView(self, list(range(m)), list(range(n)), is_transpose=True)
 
-    @staticmethod
-    def zeros(m, n):
-        """Returns m by n matrix of zeros. No sparsity yet.
-        """
-        data = dict.fromkeys(itertools.product(range(m), range(n)), mpfr(0))
-        return MPMatrix((m, n), data)
 
 # TODO: this implementation depends on deprecated functions, fix.
 
@@ -236,7 +315,7 @@ class MPMatrix:
         m, n = self.shape
         assert n == 1, "need shape (m,1); have ({}, {})".format(m, n)
         alpha = self[0, 0]
-        y = self.drop_row(0)
+        y = self[1:]
         sigma = y.frob_prod(y)  #norm squared
 
         if sigma == 0 and alpha >= 0:
@@ -255,52 +334,29 @@ class MPMatrix:
             v = v.scale(1 / new_v0)
             return v, beta
 
-# TODO: fix deprecated function calls
-
-    def _house_minor_update(self, k):
-        """Utility function used for algorithm 5.2.1, pg 273,
-        Matrix Computation 4th ed.
-        
-        Mutates self by clearing the kth column.
-        """
-        m, n = self.shape
-
-        # Copy the column vector in order to call _house(column).
-        data = dict()
-        length = m - k
-        for i in range(length):
-            # Equivalent to self[k:, k] in numpy notation
-            data[(i, 0)] = self[k + i, k]
-        reflect_me = MPMatrix((length, 1), data)
-        v, beta = _house(reflect_me)
-
-        # Now need to update the submatrix B = self.data[k:, k:]
-        # via the transformation  B = (I - beta * v * v.T) * B
-        scalar = 1 - beta * v.frob_prod(v)
-        for i in range(k, m):
-            for j in range(k, n):
-                self[i, j] *= scalar
-                # Could we optimize this by storing scalars for n minors?
-        return
-
-
-# TODO: finish implementation after callees are refactored
-
     def QR(self):
         """Perform QR factorization with householder reflections.
-        O(n^3), stable."""
+        Assumes m >= n. O(n^3), stable.
+        """
         m, n = self.shape
+        R = self.copy()
+        Q = eye(m)
+
         for j in range(n):
-            _house_minor_update(self)
-            if j < m:
-                #TODO: A(j+1:m, j) = v(2:m-j+1)
-                pass
-        return
+            v, beta = R[j:, j]._house()
+            H = eye(m)
+            prod = v.frob_product(v)
+            H[j:, j:] -= beta * prod  # A[j:, j:] = (I - beta*v*v.T)*A[j:, j:]
+            if j < m - 1:
+                H[j + 1:, j] = v[2:m - j + 1]  # A[j+1:, j] = v[2:m-j+1]
+            R = H * A
+            Q = H * Q
+        return Q[:n].T, R[:n]
 
 
 class MPView(MPMatrix):
     """View of MPMatrix: same underlying data, cf. numpy model."""
-    def __init__(self, parent, p_rows, p_cols):
+    def __init__(self, parent, p_rows, p_cols, is_transpose=False):
         """Initialize from parent and two lists of parent indices:
         p_rows is parent_rows, p_cols is parent_cols.
         
@@ -309,9 +365,12 @@ class MPView(MPMatrix):
         """
         self.parent = parent
         self.p_rows, self.p_cols = p_rows, p_cols
+        self.is_transpose = is_transpose
         new_m = len(self.p_rows)
         new_n = len(self.p_cols)
         self.shape = (new_m, new_n)
+        if new_m == 0 or new_n == 0:
+            raise IndexError('Invalid shape: {},{}'.format(new_m, new_n))
 
         # If B is a matrix view of A, any row/col of B has two indices:
         # the view index in B and the parent index in A.
@@ -371,7 +430,12 @@ class MPView(MPMatrix):
             coords = [item, item]
             coords[flat_dim_idx] = 0
             item = tuple(coords)
-        r, c = item
+
+        if self.is_transpose:
+            c, r = item
+        else:
+            r, c = item
+
         if isinstance(r, int):
             if isinstance(c, int):  # simple int pair: return early
                 return self.get_parent_idx(item)
@@ -396,6 +460,7 @@ class MPView(MPMatrix):
 
     def __getitem__(self, item):
         """Reindex and use parent's __getitem__"""
+        index = self.reindex(item)
         return self.parent[self.reindex(item)]
 
     def __setitem__(self, item):
