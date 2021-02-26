@@ -16,7 +16,7 @@ def import_array(A):
     data = dict()
     for i in range(m):
         for j in range(n):
-            data[i, j] = mpfr(A[(i, j)])
+            data[i, j] = mpfr(A[i, j])
     return MPMatrix((m, n), data)
 
 
@@ -58,9 +58,19 @@ class MPMatrix:
         self.data = data
 
     def __add__(self, B):
-        """B is another MPMatrix, returns A+B using global ctx"""
+        """If B is another MPMatrix, returns A+B.
+        If B is a constant, adds it to all entries."""
         m, n = self.shape
-        k, r = B.shape
+        try:
+            k, r = B.shape
+        except AttributeError:  # treat B as constant
+            c = mpfr(B)
+            sum_ = dict()
+            for i in range(m):
+                for j in range(n):
+                    sum_[i, j] = self[i, j] + c
+            return MPMatrix((m, n), sum_)
+
         assert (m == k
                 and n == r), ("Cannot add shapes ({}, {}) and ({}, {})".format(
                     m, n, k, r))
@@ -71,44 +81,68 @@ class MPMatrix:
         return MPMatrix((m, n), sum_)
 
     def __iadd__(self, B):
-        """B is another MPMatrix, returns A+B using global ctx"""
+        """If B is another MPMatrix, returns A+B in place.
+        If B is a constant, adds it to all entries in place.
+        """
         m, n = self.shape
-        k, r = B.shape
+        try:
+            k, r = B.shape
+        except AttributeError:  # treat B as constant
+            c = mpfr(B)
+            for i in range(m):
+                for j in range(n):
+                    self[i, j] += c
+            return self
         assert (m == k
                 and n == r), ("Cannot add shapes ({}, {}) and ({}, {})".format(
                     m, n, k, r))
         for i in range(m):
             for j in range(n):
                 self[i, j] += B[i, j]
-        return
+        return self
 
     def __isub__(self, B):
         """B is another MPMatrix, returns A+B using global ctx"""
         m, n = self.shape
-        k, r = B.shape
+        try:
+            k, r = B.shape
+        except AttributeError:  # treat B as constant
+            c = mpfr(B)
+            for i in range(m):
+                for j in range(n):
+                    self[i, j] -= c
+            return self
         assert (m == k
                 and n == r), ("Cannot add shapes ({}, {}) and ({}, {})".format(
                     m, n, k, r))
         for i in range(m):
             for j in range(n):
                 self[i, j] -= B[i, j]
-        return
+        return self
 
     def __sub__(self, B):
         """B is another MPMatrix, returns A+B using global ctx"""
         m, n = self.shape
-        k, r = B.shape
+        try:
+            k, r = B.shape
+        except AttributeError:  # treat B as constant
+            c = mpfr(B)
+            diff = dict()
+            for i in range(m):
+                for j in range(n):
+                    diff[i, j] = self[i, j] - c
+            return MPMatrix((m, n), diff)
         assert (m == k
                 and n == r), ("Cannot add shapes ({}, {}) and ({}, {})".format(
                     m, n, k, r))
-        sum_ = dict()
+        diff = dict()
         for i in range(m):
             for j in range(n):
-                sum_[i, j] = self[i, j] - B[i, j]
-        return MPMatrix((m, n), sum_)
+                diff[i, j] = self[i, j] - B[i, j]
+        return MPMatrix((m, n), diff)
 
-    def __mul__(self, B):
-        """B is another MPMatrix, returns A*B using global ctx"""
+    def __matmul__(self, B):
+        """Returns A@B using global ctx"""
         m, n = self.shape
         n_, r = B.shape
         assert n == n_, ("Cannot multiply shapes "
@@ -122,6 +156,33 @@ class MPMatrix:
                     prod += self[i, j] * B[j, k]
                 mul_[i, k] = prod
         return MPMatrix((m, r), mul_)
+
+    def __mul__(self, scalar):
+        """Pointwise multiplication by a constant.
+        The constant is cast to mpfr, so strings are acceptable.
+        Returns a new matrix."""
+        m, n = self.shape
+        scalar = mpfr(scalar)
+        data = dict()
+        for i in range(m):
+            for j in range(n):
+                data[i, j] = self[i, j] * scalar
+        return MPMatrix((m, n), data)
+
+    def __imul__(self, scalar):
+        """A *= c, in-place version of __mul__"""
+        m, n = self.shape
+        scalar = mpfr(scalar)
+        for i in range(m):
+            for j in range(n):
+                self[i, j] *= scalar
+        return self
+
+    def __truediv__(self, scalar):
+        return self.__mul__(mpfr(1) / mpfr(scalar))
+
+    def __itruediv__(self, scalar):
+        return self.__imul__(mpfr(1) / mpfr(scalar))
 
     def _cleankey(self, key):
         """Cleans __getitem_ input.
@@ -196,6 +257,11 @@ class MPMatrix:
 
         A[2, [4,5,6]] and A[2, 4:7] are valid ways to obtain the same submatrix.
         """
+        # TODO: fix 1-by-1 case, deprecate support for vector indexing.
+        # TODO: add isvector() method
+        # TODO: add method that distinguishes between 1x1, 1xn, mx1, mxn
+        # TODO: make sure that there's distinct ways to index a 1 by 1 matrix
+        #       and retrieve a value.
         rows, cols = self._cleankey(key)
         if len(rows) == len(cols) == 1:  #simple index case
             i, j = rows[0], cols[0]
@@ -247,7 +313,7 @@ class MPMatrix:
             return "Empty or invalid MPMatrix of shape {}".format(self.shape)
 
         #TODO fix
-        max_len = 2
+        max_len = 5
         all_strings = [[self[i, j].__str__()[:max_len] for j in range(n)]
                        for i in range(m)]
 
@@ -263,16 +329,6 @@ class MPMatrix:
         """Returns a copy of itself."""
         data = self.data.copy()
         return MPMatrix(self.shape, data)
-
-    def scale(self, scalar):
-        """A.scale(c) returns c*A, pointwise multiplication.
-        For precise scaling, provide the scalar as a string, e.g. "1.233".
-        """
-        m, n = self.shape
-        for i in range(m):
-            for j in range(n):
-                self[(i, j)] *= mpfr(scalar)
-        return self
 
     def ptwise(self, f):
         """A.ptwise(f) returns an MPMatrix with f applied to each entry of A.
@@ -345,7 +401,7 @@ class MPMatrix:
                 new_v0 = -sigma / (alpha + mu)
             beta = 2 * new_v0**2 / (sigma + new_v0**2)
             v[(0, 0)] = new_v0
-            v = v.scale(1 / new_v0)
+            v /= new_v0
             return v, beta
 
     def QR(self):
@@ -371,8 +427,8 @@ class MPMatrix:
             H[j:, j:] = H[j:, j:] - const(H[j:, j:].shape, beta * prod)
             if j < m - 1:
                 H[j + 1:, j] = v[1:]  # A[j+1:, j] = v[2:m-j+1]
-            R = H * R
-            Q = H * Q
+            R = H @ R
+            Q = H @ Q
         return Q[:n].T(), R[:n]
 
 

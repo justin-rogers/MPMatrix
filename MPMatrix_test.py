@@ -94,22 +94,27 @@ class MatMulMP(unittest.TestCase):
         A, B = 100 * np.random.rand(m, k), 100 * np.random.rand(k, n)
         A_ = import_array(A)
         B_ = import_array(B)
-        AB_np = np.matmul(A, B)
-        AB_mp = A_ * B_
+        AB_np = A @ B
+        AB_mp = A_ @ B_
         equality, log = _assert_mp_equals_np(AB_mp, AB_np)
         self.assertTrue(equality, msg=log)
 
 
 class ScaleFloatMP(unittest.TestCase):
     def test(self):
-        # Test scaling
+        # Test __mul__
         m, n = random.randint(1, 3), random.randint(1, 3)
         A = 100 * np.random.rand(m, n)
         c = random.random()  # float in [0,1)
         A_ = import_array(A)
         cA_np = c * A
-        cA_mp = A_.scale(c)
+        cA_mp = A_ * (c)
         equality, log = _assert_mp_equals_np(cA_mp, cA_np)
+        self.assertTrue(equality, msg=log)
+
+        # Test __imul__
+        A_ *= c
+        equality, log = _assert_mp_equals_np(A_, cA_np)
         self.assertTrue(equality, msg=log)
 
 
@@ -121,8 +126,13 @@ class ScaleStringMP(unittest.TestCase):
         c = random.random()  # float in [0,1)
         A_ = import_array(A)
         cA_np = c * A
-        cA_mp = A_.scale(str(c))
+        cA_mp = A_ * (c)
         equality, log = _assert_mp_equals_np(cA_mp, cA_np)
+        self.assertTrue(equality, msg=log)
+
+        # Test __imul__
+        A_ *= c
+        equality, log = _assert_mp_equals_np(A_, cA_np)
         self.assertTrue(equality, msg=log)
 
 
