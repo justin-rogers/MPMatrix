@@ -241,6 +241,23 @@ class SetCol(unittest.TestCase):
         self.assertTrue(equality, msg=log)
 
 
+class TransposeTest(unittest.TestCase):
+    def test(self):
+        m, n = 4, 5
+        A = 100 * np.random.rand(m, n)
+        A_ = import_array(A)
+        npT = A.T
+        mpT = A_.T()
+
+        equality, log = _assert_mp_equals_np(mpT, npT)
+        log += "\nListing transposed matrices. mpT: {}\n\n npT: {}\n".format(
+            mpT, npT)
+        log += "\nOriginal np matrix: {}".format(A)
+        log += "\nmpT[0,1]: {}. Without transpose: {}".format(
+            mpT[0, 1], A_[0, 1])
+        self.assertTrue(equality, msg=log)
+
+
 def multiprec_test():
     print("Testing at P=53.")
     unittest.main(exit=False)
