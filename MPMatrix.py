@@ -318,6 +318,8 @@ class MPView(MPMatrix):
         
         Ex: If A.shape = (5,5), MPView(A, [2,3,4], [2,3,4]) will initialize
         an MPView of shape (3,3), looking at the 3x3 bottom-right submatrix.
+        
+        TODO: verify transpose is robust
         """
         self.parent = parent
         self.p_rows, self.p_cols = p_rows, p_cols
@@ -366,47 +368,38 @@ class MPView(MPMatrix):
         j = self.p_cols[b]
         return (i, j)
 
+    def __repr__(self):
+        """copied from parent but swapping n and m"""
+        if self.is_transpose:
+            n, m = self.shape
+        else:
+            m, n = self.shape
+        if 0 in (m, n):
+            return "Empty or invalid MPMatrix of shape {}".format(self.shape)
+
+        all_strings = [[self[i, j].__str__() for j in range(n)]
+                       for i in range(m)]
+        max_len = max(
+            [max([len(s) for s in all_strings[i]]) for i in range(m)])
+        lines = [
+            ''.join([s.ljust(max_len + 1) for s in all_strings[i]])
+            for i in range(m)
+        ]
+        return '\n'.join(lines)
+
     def reindex(self, item):
         """Converts view index objects to parent index objects, which
         may be consumed by parent.__getitem__ and parent.__setitem__.
         
-        Simple case, item = (int, int): 
-            return parent index (int, int)
-        Flat case, item = int; view is vector-shaped:
-            return parent index (int, int)
-        Slice case, item = (slice, slice):
-            return coordinate lists (list[int], list[int])
-        List case, item = (list[int], list[int]):
-            return coordinate lists (list[int], list[int])
-        The following mixed indices are handled by appropriate casting:
-            (int, list), (int, slice), (slice, int), (list, slice)
+        This also handles transpose reindexing, where the parent holds
+        the non-transposed data.
         """
-        if isinstance(item, int):  # Convert single int to view-coordinates
-            flat_dim_idx = list(self.shape).index(1)
-            coords = [item, item]
-            coords[flat_dim_idx] = 0
-            item = tuple(coords)
-
+        item = self._cleankey(item)
         if self.is_transpose:
             c, r = item
         else:
             r, c = item
 
-        if isinstance(r, int):
-            if isinstance(c, int):  # simple int pair: return early
-                return self.get_parent_idx(item)
-            # If only one of r and c is an int, wrap in list.
-            r = [r]
-        if isinstance(c, int):
-            c = [c]
-
-        # Convert slices to index lists
-        if isinstance(r, slice):
-            r = self.p_rows[r]
-        if isinstance(c, slice):
-            c = self.p_cols[c]
-
-        # Anything remaining should be an index list.
         if isinstance(r, list) and isinstance(c, list):
             new_rows = [self.p_rows[i] for i in r]
             new_cols = [self.p_cols[j] for j in c]
@@ -417,11 +410,12 @@ class MPView(MPMatrix):
     def __getitem__(self, item):
         """Reindex and use parent's __getitem__"""
         index = self.reindex(item)
-        return self.parent[self.reindex(item)]
+        return self.parent[index]
 
-    def __setitem__(self, item):
+    def __setitem__(self, item, value):
         """Reindex and use parent's __setitem__"""
-        self.parent.__setitem__(self.reindex(item))
+        index = self.reindex(item)
+        self.parent.__setitem__(index, value)
 
 
 class IndexFetcher:
