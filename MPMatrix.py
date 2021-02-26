@@ -30,14 +30,26 @@ def zeros(m, n):
 def eye(m):
     """Return m by m identity MPMatrix"""
     data = dict()
-    for i, j in range(itertools.product(range(m), range(m))):
+    for i, j in itertools.product(range(m), range(m)):
         data[i, j] = mpfr(i == j)
     return MPMatrix((m, m), data)
+
+
+def const(shape, val):
+    """Return MPMatrix of given shape filled with given constant value"""
+    assert isinstance(shape, tuple) and len(shape) == 2 and isinstance(
+        shape[0], int) and isinstance(shape[1], int)
+    assert isinstance(val, type(mpfr(0)))
+    m, n = shape
+    data = dict.fromkeys(itertools.product(range(m), range(n)), val)
+    return MPMatrix((m, n), data)
 
 
 class MPMatrix:
     """Mixed precision matrix class: matrix ops implemented pointwise
     using gmpy2.mpfr"""
+    printable_digits = 5
+
     def __init__(self, shape, data):
         """shape (m, n)
         data is a dict of tuple-index 'mpfr' objects
@@ -56,6 +68,43 @@ class MPMatrix:
         for i in range(m):
             for j in range(n):
                 sum_[i, j] = self[i, j] + B[i, j]
+        return MPMatrix((m, n), sum_)
+
+    def __iadd__(self, B):
+        """B is another MPMatrix, returns A+B using global ctx"""
+        m, n = self.shape
+        k, r = B.shape
+        assert (m == k
+                and n == r), ("Cannot add shapes ({}, {}) and ({}, {})".format(
+                    m, n, k, r))
+        for i in range(m):
+            for j in range(n):
+                self[i, j] += B[i, j]
+        return
+
+    def __isub__(self, B):
+        """B is another MPMatrix, returns A+B using global ctx"""
+        m, n = self.shape
+        k, r = B.shape
+        assert (m == k
+                and n == r), ("Cannot add shapes ({}, {}) and ({}, {})".format(
+                    m, n, k, r))
+        for i in range(m):
+            for j in range(n):
+                self[i, j] -= B[i, j]
+        return
+
+    def __sub__(self, B):
+        """B is another MPMatrix, returns A+B using global ctx"""
+        m, n = self.shape
+        k, r = B.shape
+        assert (m == k
+                and n == r), ("Cannot add shapes ({}, {}) and ({}, {})".format(
+                    m, n, k, r))
+        sum_ = dict()
+        for i in range(m):
+            for j in range(n):
+                sum_[i, j] = self[i, j] - B[i, j]
         return MPMatrix((m, n), sum_)
 
     def __mul__(self, B):
@@ -174,7 +223,9 @@ class MPMatrix:
             self.data[i, j] = val
             return
 
-        assert (len(rows), len(cols)) == val.shape
+        errmsg = "Key shape: {}\n Val shape: {}".format((rows, cols),
+                                                        val.shape)
+        assert (len(rows), len(cols)) == val.shape, errmsg
 
         # Local data indices: a, b.
         # View indices: i, j
@@ -195,10 +246,13 @@ class MPMatrix:
         if 0 in (m, n):
             return "Empty or invalid MPMatrix of shape {}".format(self.shape)
 
-        all_strings = [[self[i, j].__str__() for j in range(n)]
+        #TODO fix
+        max_len = 2
+        all_strings = [[self[i, j].__str__()[:max_len] for j in range(n)]
                        for i in range(m)]
-        max_len = max(
-            [max([len(s) for s in all_strings[i]]) for i in range(m)])
+
+        # max_len = max(
+        #     [max([len(s) for s in all_strings[i]]) for i in range(m)])
         lines = [
             ''.join([s.ljust(max_len + 1) for s in all_strings[i]])
             for i in range(m)
@@ -272,7 +326,11 @@ class MPMatrix:
         assert n == 1, "need shape (m,1); have ({}, {})".format(m, n)
         alpha = self[0, 0]
         y = self[1:]
-        sigma = y.frob_prod(y)  #norm squared
+
+        try:
+            sigma = y.frob_prod(y)  #norm squared
+        except AttributeError:  # ugly type hack for 1x1 case
+            sigma = y * y
 
         if sigma == 0 and alpha >= 0:
             return self, 0
@@ -299,15 +357,23 @@ class MPMatrix:
         Q = eye(m)
 
         for j in range(n):
-            v, beta = R[j:, j]._house()
+            reflect_me = R[j:, j]
+            if isinstance(reflect_me,
+                          type(mpfr(0))):  # ugly type hack for 1x1 case
+                reflect_me = MPMatrix((1, 1), reflect_me)
+            v, beta = reflect_me._house()
             H = eye(m)
-            prod = v.frob_product(v)
-            H[j:, j:] -= beta * prod  # A[j:, j:] = (I - beta*v*v.T)*A[j:, j:]
+            try:
+                prod = v.frob_prod(v)
+            except AttributeError:  # ugly type hack for 1x1 case
+                prod = v * v
+            # A[j:, j:] = (I - beta*v*v.T)*A[j:, j:]
+            H[j:, j:] = H[j:, j:] - const(H[j:, j:].shape, beta * prod)
             if j < m - 1:
-                H[j + 1:, j] = v[2:m - j + 1]  # A[j+1:, j] = v[2:m-j+1]
-            R = H * A
+                H[j + 1:, j] = v[1:]  # A[j+1:, j] = v[2:m-j+1]
+            R = H * R
             Q = H * Q
-        return Q[:n].T, R[:n]
+        return Q[:n].T(), R[:n]
 
 
 class MPView(MPMatrix):

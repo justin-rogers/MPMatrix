@@ -241,6 +241,23 @@ class SetCol(unittest.TestCase):
         self.assertTrue(equality, msg=log)
 
 
+class QRTest(unittest.TestCase):
+    def test(self):
+        m, n = 6, 5
+        A = 100 * np.random.rand(m, n)
+        npQ, npR = np.linalg.qr(A)
+        A_ = import_array(A)
+        mpQ, mpR = A_.QR()
+
+        equality, log = _assert_mp_equals_np(mpQ, npQ)
+        log += "\nmpQ: {} \n npQ: {}".format(mpQ, npQ)
+        self.assertTrue(equality, msg=log)
+
+        equality, log = _assert_mp_equals_np(mpR, npR)
+        log += "\nmpR: {} \n npR: {}".format(mpR, npR)
+        self.assertTrue(equality, msg=log)
+
+
 class TransposeTest(unittest.TestCase):
     def test(self):
         m, n = 4, 5
