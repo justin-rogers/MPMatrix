@@ -160,29 +160,6 @@ class GetColViewFromRect(unittest.TestCase):
                         msg=log + "\nMP: {}, \n\nNP: {}".format(A_mp, A_np))
 
 
-class GetPtViewFromRect(unittest.TestCase):
-    def test(self):
-        m, n = 4, 5
-        A = 100 * np.random.rand(m, n)
-        A_ = import_array(A)
-        A_mp = A_[2:3, 2:3]
-        A_np = A[2:3, 2:3]
-        equality, log = _assert_mp_equals_np(A_mp, A_np)
-        self.assertTrue(equality, msg=log)
-
-
-class GetRowViewFromCol(unittest.TestCase):
-    def test(self):
-        m, n = 4, 1
-        A = 100 * np.random.rand(m, n)
-        A_ = import_array(A)
-        k = 3
-        A_mp = A_[k, :]
-        A_np = A[np.newaxis, k, :]
-        equality, log = _assert_mp_equals_np(A_mp, A_np)
-        self.assertTrue(equality, msg=log)
-
-
 class GetColViewFromCol(unittest.TestCase):
     def test(self):
         m, n = 4, 1
@@ -191,17 +168,6 @@ class GetColViewFromCol(unittest.TestCase):
         k = 0
         A_mp = A_[:, k]
         A_np = A[k, :, np.newaxis]
-        equality, log = _assert_mp_equals_np(A_mp, A_np)
-        self.assertTrue(equality, msg=log)
-
-
-class GetPtViewFromCol(unittest.TestCase):
-    def test(self):
-        m, n = 4, 1
-        A = 100 * np.random.rand(m, n)
-        A_ = import_array(A)
-        A_mp = A_[2:3, :]
-        A_np = A[2:3, :]
         equality, log = _assert_mp_equals_np(A_mp, A_np)
         self.assertTrue(equality, msg=log)
 
@@ -229,28 +195,6 @@ class GetRowViewFromRow(unittest.TestCase):
         self.assertTrue(equality, msg=log)
 
 
-class GetColViewFromRow(unittest.TestCase):
-    def test(self):
-        m, n = 1, 5
-        A = 100 * np.random.rand(m, n)
-        A_ = import_array(A)
-        A_mp = A_[:, 0]
-        A_np = A[:, 0:1]
-        equality, log = _assert_mp_equals_np(A_mp, A_np)
-        self.assertTrue(equality, msg=log)
-
-
-class GetPtViewFromRow(unittest.TestCase):
-    def test(self):
-        m, n = 1, 5
-        A = 100 * np.random.rand(m, n)
-        A_ = import_array(A)
-        A_mp = A_[:, 2:3]
-        A_np = A[:, 2:3]
-        equality, log = _assert_mp_equals_np(A_mp, A_np)
-        self.assertTrue(equality, msg=log)
-
-
 class GetPtFromRow(unittest.TestCase):
     """Test single-int indexing"""
     def test(self):
@@ -261,32 +205,6 @@ class GetPtFromRow(unittest.TestCase):
         A_np = A[0, 2]
         equality = _ptwise_vals_equal(A_mp, A_np, None)
         self.assertTrue(equality, msg="MP: {}, NP: {}".format(A_mp, A_np))
-
-
-class GetPtViewFromPtView(unittest.TestCase):
-    def test(self):
-        m, n = 1, 5
-        A = 100 * np.random.rand(m, n)
-        A_ = import_array(A)
-        A_np = A[:, 2:3]
-        A_int = A_[[0], [2]]
-        A_mp = A_int[[0], [0]]
-        equality, log = _assert_mp_equals_np(A_mp, A_np)
-        self.assertTrue(equality, msg=log)
-
-
-class GetPtFromPtView(unittest.TestCase):
-    def test(self):
-        m, n = 1, 5
-        A = 100 * np.random.rand(m, n)
-        A_ = import_array(A)
-        A_np = A[0, 2]
-        A_int = A_[[0], [2]]
-        A_mp = A_int[0]
-        equality = _ptwise_vals_equal(A_mp, A_np, None)
-        self.assertTrue(equality, msg="MP: {}, NP: {}".format(A_mp, A_np))
-        self.assertTrue(A_mp == A_int[0, 0],
-                        msg=": {}, NP: {}".format(A_mp, A_int[0, 0]))
 
 
 class SetRow(unittest.TestCase):
@@ -316,6 +234,10 @@ class SetCol(unittest.TestCase):
         A_mp = A_
         A_np = A
         equality, log = _assert_mp_equals_np(A_mp, A_np)
+        log += "\nListing shapes. A: {}, A_: {}, B: {}, B_: {}".format(
+            A.shape, A_.shape, B.shape, B_.shape)
+        log += "\nListing A matrices. A: {}\n\n A_: {}\n".format(A, A_)
+        log += "\nColumn to write: {}".format(B[:, 2])
         self.assertTrue(equality, msg=log)
 
 
@@ -339,17 +261,10 @@ def test_views():
     suite = unittest.TestSuite()
     suite.addTest(GetRowViewFromRect(methodName='test'))
     suite.addTest(GetColViewFromRect(methodName='test'))
-    suite.addTest(GetPtViewFromRect(methodName='test'))
-    suite.addTest(GetRowViewFromCol(methodName='test'))
     suite.addTest(GetColViewFromCol(methodName='test'))
-    suite.addTest(GetPtViewFromCol(methodName='test'))
     suite.addTest(GetPtFromCol(methodName='test'))
     suite.addTest(GetRowViewFromRow(methodName='test'))
-    suite.addTest(GetColViewFromRow(methodName='test'))
-    suite.addTest(GetPtViewFromRow(methodName='test'))
     suite.addTest(GetPtFromRow(methodName='test'))
-    suite.addTest(GetPtViewFromPtView(methodName='test'))
-    suite.addTest(GetPtFromPtView(methodName='test'))
     runner = unittest.TextTestRunner()
     runner.run(suite)
 

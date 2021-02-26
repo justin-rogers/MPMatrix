@@ -99,6 +99,10 @@ class MPMatrix:
                 key[0], list) and isinstance(key[1], list):
             return key
 
+        if isinstance(key, MPView):
+            key = (key.p_rows, key.p_cols)
+            return key
+
         m, n = self.shape
 
         if isinstance(key, int) or isinstance(key, slice) or isinstance(
@@ -107,8 +111,8 @@ class MPMatrix:
                 key = ([0], key)
             elif n == 1:  # col vector case
                 key = (key, [0])
-            else:  # interpret as row indexes
-                key = (key, slice(None, None, None))
+            else:  # if not vector-shaped, all columns are implicitly indexed
+                key = (key, list(range(n)))
         row_key, col_key = key
 
         if isinstance(row_key, slice):
@@ -143,44 +147,11 @@ class MPMatrix:
 
         A[2, [4,5,6]] and A[2, 4:7] are valid ways to obtain the same submatrix.
         """
-        if isinstance(key, int):  # One int index, interpret as vector index.
-            try:
-                flat_dim_idx = list(self.shape).index(1)
-                coords = [key, key]
-                coords[flat_dim_idx] = 0
-                key = tuple(coords)
-            except ValueError:  # 1 is not in the list, interpret as row index
-                key = (key, slice(None, None, None))
-        m, n = self.shape
-        if isinstance(key, slice):  # One slice index, interpret as row index.
-            # Small inconsistency with integer-indexing. I don't think
-            # there's a workaround unless I use np's approach of cutting dims
-            # Indexing of the form A[x:y] will be interpreted as row indices.
-            # So if A is shaped like a row vector, you cannot use a single slice
-            # to index it, as if it were a list.
-            key = (key, slice(None, None, None))
-        if isinstance(key, list):  # One list index, same as above.
-            key = (key, slice(None, None, None))
-
-        r, c = key  # Can assume key is length-2 tuple
-        if isinstance(r, int) and isinstance(c, int):  # highest priority
-            return self.data[r, c]
-        # Replace slices with index lists
-        if isinstance(r, slice):
-            r = list(range(m))[r]
-        if isinstance(c, slice):
-            c = list(range(n))[c]
-
-        # Already handled (int, int) case
-        if isinstance(r, int) and isinstance(c, list):  # (int, list)
-            return MPView(self, [r], c)
-        elif isinstance(r, list):
-            if isinstance(c, list):  # (list, list)
-                return MPView(self, r, c)
-            if isinstance(c, int):  # (list, int)
-                return MPView(self, r, [c])
-        else:
-            raise  # should not be accessed
+        rows, cols = self._cleankey(key)
+        if len(rows) == len(cols) == 1:  #simple index case
+            i, j = rows[0], cols[0]
+            return self.data[i, j]
+        return MPView(self, rows, cols)
 
     def __setitem__(self, key, val):
         """
@@ -196,34 +167,19 @@ class MPMatrix:
         
         If Key is a view: we simply need to iterate and setitem.
         """
-        if isinstance(key, int):  # Interpret as vector index if possible
-            flat_dim_idx = list(self.shape).index(1)
-            coords = [key, key]
-            coords[flat_dim_idx] = 0
-            key = tuple(coords)
-        if isinstance(key, MPView):
-            key = (key.p_rows, key.p_cols)
-        r, c = key  # Can assume key is length-2 tuple
-        if isinstance(r, int) and isinstance(
-                c, int):  # highest priority: simple write
+        rows, cols = self._cleankey(key)
+        if len(rows) == len(cols) == 1:  #simple index case
+            i, j = rows[0], cols[0]
             assert isinstance(val, type(mpfr(0)))
-            self.data[key] = val
+            self.data[i, j] = val
             return
-        m, n = self.shape
-        # Clean ints and slices to get row/col index lists
-        if isinstance(r, int):
-            r = [r]
-        if isinstance(c, int):
-            c = [c]
-        if isinstance(r, slice):
-            r = list(range(m))[r]
-        if isinstance(c, slice):
-            c = list(range(n))[c]
-        assert (len(r), len(c)) == val.shape
+
+        assert (len(rows), len(cols)) == val.shape
+
         # Local data indices: a, b.
         # View indices: i, j
-        for i, a in enumerate(r):
-            for j, b in enumerate(c):
+        for i, a in enumerate(rows):
+            for j, b in enumerate(cols):
                 datum = val[i, j]
                 assert isinstance(datum, type(mpfr(0)))
                 self.data[a, b] = val[i, j]
