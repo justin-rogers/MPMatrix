@@ -184,7 +184,7 @@ class MPMatrix:
     def __itruediv__(self, scalar):
         return self.__imul__(mpfr(1) / mpfr(scalar))
 
-    def _cleankey(self, key):
+    def _cleankey(self, key, is_view=None):
         """Cleans __getitem_ input.
         If key is an int, it will be interpreted as a vector index if possible.
             Ex: v is a row vector, v[0] will return the 0th entry of v.
@@ -203,20 +203,35 @@ class MPMatrix:
                 a:b:c slice -> [a, a+c, ... a+nc] list
                     (by applying the slice to the row or column indices)
         
-        Always returns (row_indices, column_indices) index of the given key.
+        is_view is a bool indicating if a view should be returned. If false,
+        an mpfr is retrieved. If not provided, the default behavior
+        is to return a view, unless:
+            1. The key is of the form A[i,j], where i,j are ints.
+            2. The key is of the form A[i], and A has vector shape.
+        
+        Returns (row_indices, column_indices, is_view) index of the given key.
         """
-        if isinstance(key, tuple) and len(key) == 2 and isinstance(
-                key[0], list) and isinstance(key[1], list):
-            return key
+        m, n = self.shape
+        if is_view == None:
+            if isinstance(key, int) and any([x == 1 for x in self.shape]):
+                is_view = False
+            elif isinstance(key, tuple) and all(
+                [isinstance(x, int) for x in key]):
+                is_view = False
+            else:
+                is_view = True
+
+        if isinstance(key, tuple) and len(key) == 2 and all(
+            [isinstance(x, list) for x in key]):
+            return (*key, is_view)
 
         if isinstance(key, MPView):
             key = (key.p_rows, key.p_cols)
-            return key
-
-        m, n = self.shape
+            return (*key, is_view)
 
         if isinstance(key, int) or isinstance(key, slice) or isinstance(
-                key, list):  # One index given, check if vector shaped.
+                key, list):
+            # One index given, check if vector shaped.
             if m == 1:  # row vector case
                 key = ([0], key)
             elif n == 1:  # col vector case
@@ -235,7 +250,7 @@ class MPMatrix:
         elif isinstance(col_key, int):
             col_key = [col_key]
 
-        return (row_key, col_key)
+        return (row_key, col_key, is_view)
 
     def __getitem__(self, key):
         """Syntactic sugar for data read via tuple keys
@@ -262,8 +277,8 @@ class MPMatrix:
         # TODO: add method that distinguishes between 1x1, 1xn, mx1, mxn
         # TODO: make sure that there's distinct ways to index a 1 by 1 matrix
         #       and retrieve a value.
-        rows, cols = self._cleankey(key)
-        if len(rows) == len(cols) == 1:  #simple index case
+        rows, cols, is_view = self._cleankey(key)
+        if not (is_view):  #simple index case
             i, j = rows[0], cols[0]
             return self.data[i, j]
         return MPView(self, rows, cols)
@@ -282,8 +297,8 @@ class MPMatrix:
         
         If Key is a view: we simply need to iterate and setitem.
         """
-        rows, cols = self._cleankey(key)
-        if len(rows) == len(cols) == 1:  #simple index case
+        rows, cols, is_view = self._cleankey(key)
+        if not (is_view):  #simple index case
             i, j = rows[0], cols[0]
             assert isinstance(val, type(mpfr(0)))
             self.data[i, j] = val
@@ -309,21 +324,26 @@ class MPMatrix:
         Will not look pretty if the array is too wide.
         """
         m, n = self.shape
+        try:
+            if self.is_transpose:
+                n, m = self.shape
+        except AttributeError:
+            pass
         if 0 in (m, n):
             return "Empty or invalid MPMatrix of shape {}".format(self.shape)
 
         #TODO fix
-        max_len = 5
+        max_len = 8
         all_strings = [[self[i, j].__str__()[:max_len] for j in range(n)]
                        for i in range(m)]
 
         # max_len = max(
         #     [max([len(s) for s in all_strings[i]]) for i in range(m)])
         lines = [
-            ''.join([s.ljust(max_len + 1) for s in all_strings[i]])
-            for i in range(m)
+            ' [' + ''.join([s.ljust(max_len + 1)
+                            for s in all_strings[i]]) + ']' for i in range(m)
         ]
-        return '\n'.join(lines)
+        return '[' + '\n'.join(lines)[1:] + ']'
 
     def copy(self):
         """Returns a copy of itself."""
@@ -383,10 +403,7 @@ class MPMatrix:
         alpha = self[0, 0]
         y = self[1:]
 
-        try:
-            sigma = y.frob_prod(y)  #norm squared
-        except AttributeError:  # ugly type hack for 1x1 case
-            sigma = y * y
+        sigma = y.frob_prod(y)  #norm squared
 
         if sigma == 0 and alpha >= 0:
             return self, 0
@@ -414,9 +431,6 @@ class MPMatrix:
 
         for j in range(n):
             reflect_me = R[j:, j]
-            if isinstance(reflect_me,
-                          type(mpfr(0))):  # ugly type hack for 1x1 case
-                reflect_me = MPMatrix((1, 1), reflect_me)
             v, beta = reflect_me._house()
             H = eye(m)
             try:
@@ -424,9 +438,7 @@ class MPMatrix:
             except AttributeError:  # ugly type hack for 1x1 case
                 prod = v * v
             # A[j:, j:] = (I - beta*v*v.T)*A[j:, j:]
-            H[j:, j:] = H[j:, j:] - const(H[j:, j:].shape, beta * prod)
-            if j < m - 1:
-                H[j + 1:, j] = v[1:]  # A[j+1:, j] = v[2:m-j+1]
+            H[j:, j:] -= beta * prod
             R = H @ R
             Q = H @ Q
         return Q[:n].T(), R[:n]
@@ -490,44 +502,28 @@ class MPView(MPMatrix):
         j = self.p_cols[b]
         return (i, j)
 
-    def __repr__(self):
-        """copied from parent but swapping n and m"""
-        if self.is_transpose:
-            n, m = self.shape
-        else:
-            m, n = self.shape
-        if 0 in (m, n):
-            return "Empty or invalid MPMatrix of shape {}".format(self.shape)
-
-        all_strings = [[self[i, j].__str__() for j in range(n)]
-                       for i in range(m)]
-        max_len = max(
-            [max([len(s) for s in all_strings[i]]) for i in range(m)])
-        lines = [
-            ''.join([s.ljust(max_len + 1) for s in all_strings[i]])
-            for i in range(m)
-        ]
-        return '\n'.join(lines)
-
     def reindex(self, item):
         """Converts view index objects to parent index objects, which
         may be consumed by parent.__getitem__ and parent.__setitem__.
         
         This also handles transpose reindexing, where the parent holds
         the non-transposed data.
+        
+        If called with non-view indexing, attempts to preserve it.
         """
-        item = self._cleankey(item)
+        *item, is_view = self._cleankey(item)
         if self.is_transpose:
             c, r = item
         else:
             r, c = item
 
-        if isinstance(r, list) and isinstance(c, list):
-            new_rows = [self.p_rows[i] for i in r]
-            new_cols = [self.p_cols[j] for j in c]
-            return new_rows, new_cols
+        new_rows = [self.p_rows[i] for i in r]
+        new_cols = [self.p_cols[j] for j in c]
+
+        if is_view:
+            return (new_rows, new_cols)
         else:
-            raise
+            return (new_rows[0], new_cols[0])
 
     def __getitem__(self, item):
         """Reindex and use parent's __getitem__"""

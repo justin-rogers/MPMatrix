@@ -40,7 +40,9 @@ def _assert_mp_equals_np(mp_array, np_array):
     epsilon = mpfr("0b" + "0" * P + "1")
     for coord in coordinates:
         mp_val = mp_array[coord]
+        print(mp_val)
         np_val = np_array[coord]
+        print(np_val)
         if not _ptwise_vals_equal(mp_val, np_val, epsilon):
             return (False, "Distinct values mp: {}, np: {} at coord {}".format(
                 mp_val, np_val, coord))
@@ -260,11 +262,38 @@ class QRTest(unittest.TestCase):
         mpQ, mpR = A_.QR()
 
         equality, log = _assert_mp_equals_np(mpQ, npQ)
-        log += "\nmpQ: {} \n npQ: {}".format(mpQ, npQ)
+        log += "\nmpQ:\n{} \nnpQ:\n{}".format(mpQ, npQ)
+        log += "\nmpR:\n{} \nnpR:\n{}".format(mpR, npR)
         self.assertTrue(equality, msg=log)
 
-        equality, log = _assert_mp_equals_np(mpR, npR)
-        log += "\nmpR: {} \n npR: {}".format(mpR, npR)
+        equality, = _assert_mp_equals_np(mpR, npR)
+        self.assertTrue(equality, msg=log)
+
+
+class HouseTest(unittest.TestCase):
+    def nph(self, x):
+        """x np array, code from stackexchange"""
+        alpha = x[0]
+        s = np.power(np.linalg.norm(x[1:]), 2)
+        v = x.copy()
+        if s == 0:
+            tau = 0
+        else:
+            t = np.sqrt(alpha**2 + s)
+            v[0] = alpha - t if alpha <= 0 else -s / (alpha + t)
+            tau = 2 * v[0]**2 / (s + v[0]**2)
+            v /= v[0]
+        return v, tau
+
+    def test(self):
+        A = np.random.rand(5, 1)
+        A_ = import_array(A)
+        npv, npbeta = self.nph(A)
+        mpv, mpbeta = A_._house()
+
+        equality, log = _assert_mp_equals_np(mpv, npv)
+        log += "A: {}\nnpv: {}\nmpv: {}\nnpbeta: {}, mpbeta: {}".format(
+            A, npv, mpv, npbeta, mpbeta)
         self.assertTrue(equality, msg=log)
 
 
