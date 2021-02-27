@@ -40,9 +40,7 @@ def _assert_mp_equals_np(mp_array, np_array):
     epsilon = mpfr("0b" + "0" * P + "1")
     for coord in coordinates:
         mp_val = mp_array[coord]
-        print(mp_val)
         np_val = np_array[coord]
-        print(np_val)
         if not _ptwise_vals_equal(mp_val, np_val, epsilon):
             return (False, "Distinct values mp: {}, np: {} at coord {}".format(
                 mp_val, np_val, coord))

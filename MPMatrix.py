@@ -324,11 +324,6 @@ class MPMatrix:
         Will not look pretty if the array is too wide.
         """
         m, n = self.shape
-        try:
-            if self.is_transpose:
-                n, m = self.shape
-        except AttributeError:
-            pass
         if 0 in (m, n):
             return "Empty or invalid MPMatrix of shape {}".format(self.shape)
 
@@ -405,10 +400,8 @@ class MPMatrix:
 
         sigma = y.frob_prod(y)  #norm squared
 
-        if sigma == 0 and alpha >= 0:
+        if sigma == 0:
             return self, 0
-        elif sigma == 0 and alpha < 0:
-            return self, -2
         else:
             v = self.copy()
             mu = gmpy2.sqrt(alpha**2 + sigma)  # always positive
@@ -426,19 +419,18 @@ class MPMatrix:
         Assumes m >= n. O(n^3), stable.
         """
         m, n = self.shape
+        assert m >= n, "Requires m>=n"
         R = self.copy()
         Q = eye(m)
 
         for j in range(n):
-            reflect_me = R[j:, j]
+            reflect_me = R[j:, j].copy()
             v, beta = reflect_me._house()
             H = eye(m)
-            try:
-                prod = v.frob_prod(v)
-            except AttributeError:  # ugly type hack for 1x1 case
-                prod = v * v
             # A[j:, j:] = (I - beta*v*v.T)*A[j:, j:]
-            H[j:, j:] -= beta * prod
+            H[j:, j:] -= (v @ v.T()) * beta
+            # Not producing correct triangular matrix.
+            # Q looks good though.
             R = H @ R
             Q = H @ Q
         return Q[:n].T(), R[:n]
@@ -456,11 +448,15 @@ class MPView(MPMatrix):
         TODO: verify transpose is robust
         """
         self.parent = parent
-        self.p_rows, self.p_cols = p_rows, p_cols
         self.is_transpose = is_transpose
-        new_m = len(self.p_rows)
-        new_n = len(self.p_cols)
-        self.shape = (new_m, new_n)
+        new_m = len(p_rows)
+        new_n = len(p_cols)
+        if self.is_transpose:
+            self.shape = new_n, new_m
+            self.p_rows, self.p_cols = p_cols, p_rows
+        else:
+            self.shape = new_m, new_n
+            self.p_rows, self.p_cols = p_rows, p_cols
         if new_m == 0 or new_n == 0:
             raise IndexError('Invalid shape: {},{}'.format(new_m, new_n))
 
@@ -506,23 +502,20 @@ class MPView(MPMatrix):
         """Converts view index objects to parent index objects, which
         may be consumed by parent.__getitem__ and parent.__setitem__.
         
-        This also handles transpose reindexing, where the parent holds
-        the non-transposed data.
-        
         If called with non-view indexing, attempts to preserve it.
         """
-        *item, is_view = self._cleankey(item)
-        if self.is_transpose:
-            c, r = item
-        else:
-            r, c = item
+        r, c, is_view = self._cleankey(item)
 
         new_rows = [self.p_rows[i] for i in r]
         new_cols = [self.p_cols[j] for j in c]
 
         if is_view:
+            if self.is_transpose:
+                return (new_cols, new_rows)
             return (new_rows, new_cols)
         else:
+            if self.is_transpose:
+                return (new_cols[0], new_rows[0])
             return (new_rows[0], new_cols[0])
 
     def __getitem__(self, item):
