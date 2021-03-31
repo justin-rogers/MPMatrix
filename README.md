@@ -1,2 +1,4 @@
 # MPMatrix
-Mixed precision python library for matrix computation
+Status: Archive.
+
+Mixed precision python tools for matrix computation
